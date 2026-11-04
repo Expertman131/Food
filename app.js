@@ -116,7 +116,7 @@ const SCREENS = {
   onboarding:  { title:'Вход по SMS',    icon:'phone',    tab:null,      cartbar:false }
 };
 const TABS = [
-  { id:'menu',    label:'Меню',    icon:'utensils', screen:'catalog' },
+  { id:'menu',    label:'Меню',    icon:'utensils', screen:'home' },
   { id:'cart',   label:'Корзина', icon:'bag',      screen:'cart' },
   { id:'orders', label:'Заказы',  icon:'receipt',  screen:'orders' },
   { id:'profile',label:'Профиль', icon:'user',     screen:'profile' }
@@ -437,7 +437,7 @@ function scrHome(){
         <h2 class="h1">Наше меню</h2>
         <div class="muted small" style="margin-top:6px">Вкус, к которому возвращаются</div>
       </div>
-      <button class="link-line" data-act="go" data-screen="catalog">Все ${DISHES.length} блюд ${icon('arrowRight')}</button>
+      <button class="link-line" data-act="go" data-screen="catalog">Все ${DISHES.length} ${plural(DISHES.length,'блюдо','блюда','блюд')} ${icon('arrowRight')}</button>
     </div>
     <label class="search">
       ${icon('search')}
@@ -446,7 +446,7 @@ function scrHome(){
         value="${state.query}" data-act="search">
     </label>
     <div class="chips" id="homeChips" role="group" aria-label="Категории меню">
-      ${CATEGORIES.slice(0,5).map(c => `<button class="chip ${state.screen==='catalog' && state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+      ${CATEGORIES.filter(c => c.id !== 'all').map(c => `<button class="chip" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
     </div>
     <div class="section-head" style="margin-top:22px">
       <h2 class="h2">Попробуйте любимое</h2>
@@ -1617,6 +1617,8 @@ const ACTIONS = {
   },
   cat: (el) => {
     state.cat = el.dataset.cat;
+    /* на главной чипсы — ярлыки: там показана только лента любимого,
+       фильтр без перехода имел бы смысл, если бы там лежал весь список */
     if (state.screen !== 'catalog') go('catalog');
     else render();
   },
@@ -1815,7 +1817,9 @@ document.addEventListener('input', ev => {
   const el = ev.target;
   if (el.dataset && el.dataset.act === 'search'){
     state.query = el.value;
-    /* на главной поиск ничего не менял: там лента любимого, а ищется весь каталог */
+    /* поиск ищется по всему меню: иначе leftover-категория спрятала бы
+       половину блюд без всяких следов в интерфейсе */
+    if (el.value.trim()) state.cat = 'all';
     if (state.screen === 'home') go('catalog');
     else if (state.screen === 'catalog') render();
     const inp = document.querySelector('#viewport input[data-act="search"]');
@@ -1827,7 +1831,8 @@ document.addEventListener('input', ev => {
 
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.act === 'search'){
-    if (state.screen === 'home') go('catalog');
+    /* список фильтруется по мере ввода, так что Enter ничего не меняет */
+    ev.preventDefault();
     return;
   }
   /* нативные button/a/input сами превращают Enter и пробел в клик,
