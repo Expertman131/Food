@@ -1704,9 +1704,13 @@ window.switchMode = switchMode;
 
 document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => switchMode(b.dataset.mode)));
 
+/* разрешения сняты с массовых устройств 2024–2026: гость видит ровно тот экран, что у него в руке */
 const SIZE_PRESETS = {
-  phone:   { w:392,  h:844  },
-  compact: { w:360,  h:740  },
+  phone:   { w:393,  h:852  },
+  max:     { w:430,  h:932  },
+  pixel:   { w:412,  h:892  },
+  compact: { w:360,  h:780  },
+  small:   { w:375,  h:667  },
   tablet:  { w:768,  h:1024 },
   wide:    { w:1024, h:768  }
 };
@@ -1714,7 +1718,7 @@ const SIZE_PRESETS = {
 function intendedDeviceWidth(){
   const mode = document.body.dataset.device;
   if (mode === 'full') return 1180;
-  if (mode === 'custom') return parseInt($('#sizeW').value, 10) || 392;
+  if (mode === 'custom') return parseInt($('#sizeW').value, 10) || 393;
   return (SIZE_PRESETS[mode] || SIZE_PRESETS.phone).w;
 }
 
@@ -1723,31 +1727,48 @@ function updateSizeClass(){
   fitDevice();
 }
 
-/* Рамка не сплющивается: если не влезает в окно под шапкой, она масштабируется целиком.
+/* Ниже 90% текст становится нечитаемым, а кнопки — мимо пальца: лучше листать страницу */
+const FIT_MIN = 0.9;
+
+/* Рамка не сплющивается: масштабируется целиком, но не ниже FIT_MIN.
+   Если даже так не влезает по высоте — прилипание отключается и страница листается.
    offsetWidth при zoom остаётся исходным размером макета, поэтому им и считаем */
 function fitDevice(){
   const wrap = $('.device-wrap'), d = $('.device');
   if (!wrap || !d) return;
+  /* на настоящем телефоне муляж корпуса только мешает: приложение отдаём под весь экран */
+  const bare = innerWidth <= 560;
+  document.body.dataset.shell = bare ? 'bare' : 'fit';
   const w = d.offsetWidth, h = d.offsetHeight;
   if (!w || !h) return;   // клиентская сцена сейчас скрыта (админка) — масштаба не считаем
+  const out = $('#sizeReadout');
+  const r = d.getBoundingClientRect();
+  if (bare){
+    document.body.style.setProperty('--fit-scale', '1');
+    document.body.dataset.deviceFits = 'yes';
+    if (out) out.textContent = Math.round(r.width) + ' × ' + Math.round(r.height) + ' · весь экран';
+    return;
+  }
   const bar = parseInt(getComputedStyle(document.body).getPropertyValue('--topbar-h'), 10) || 67;
   /* у пресета «во весь экран» ширина уже взята из окна: без неё масштаб устойчивее */
   const fitsWidth = document.body.dataset.device === 'full' ? 1 : (wrap.clientWidth - 4) / w;
-  const scale = Math.min(1, fitsWidth, (innerHeight - bar - 44) / h);
+  const fitsHeight = (innerHeight - bar - 44) / h;
+  const scale = Math.min(Math.min(1, fitsWidth), Math.max(FIT_MIN, Math.min(1, fitsHeight)));
   document.body.style.setProperty('--fit-scale', scale.toFixed(4));
-  const out = $('#sizeReadout');
+  const scrolls = h * scale > innerHeight - bar - 24;
+  document.body.dataset.deviceFits = scrolls ? 'no' : 'yes';
   /* размеры в CSS-пикселях: видимый прямоугольник делим на масштаб — иначе цифры отстают на шаг */
   if (out) {
-    const r = d.getBoundingClientRect();
     out.textContent = Math.round(r.width / scale) + ' × ' + Math.round(r.height / scale)
-      + (scale < .995 ? ' · ' + Math.round(scale * 100) + '% окна' : '');
+      + (scale < .995 ? ' · ' + Math.round(scale * 100) + '% окна' : '')
+      + (scrolls ? ' · низ экрана ниже, листать' : '');
   }
 }
 
 function applyDeviceSize(mode){
   if (mode === 'custom'){
-    const w = Math.min(1600, Math.max(320, parseInt($('#sizeW').value, 10) || 392));
-    const h = Math.min(1400, Math.max(480, parseInt($('#sizeH').value, 10) || 844));
+    const w = Math.min(1600, Math.max(320, parseInt($('#sizeW').value, 10) || 393));
+    const h = Math.min(1400, Math.max(480, parseInt($('#sizeH').value, 10) || 852));
     document.body.style.setProperty('--custom-w', w + 'px');
     document.body.style.setProperty('--custom-h', h + 'px');
   }

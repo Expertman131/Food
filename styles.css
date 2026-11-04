@@ -19,8 +19,8 @@
   --line-soft:rgba(255,255,255,.07);
   --danger:#F2856B;
   --font:"Inter","SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --device-w:392px;
-  --device-h:844px;
+  --device-w:393px;
+  --device-h:852px;
   --device-r:52px;
   /* реальную высоту шапки подставляет JS: от неё считаются прилипание и высота телефона */
   --topbar-h:67px;
@@ -795,17 +795,38 @@ select.input-plain{appearance:none;}
 /* широкая колонка слева + узкая справа; на мобильных схлопывается в одну */
 .a-grid-split{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);}
 
-/* ---------- размеры экрана ---------- */
-body[data-device="phone"]  { --device-w:392px;  --device-h:844px;  --device-r:52px; }
-body[data-device="compact"]{ --device-w:360px;  --device-h:740px;  --device-r:46px; }
+/* ---------- размеры экрана ----------
+   Пресеты — реальные разрешения массовых телефонов, а не округлые «392×844»:
+   так в прототипе видно ровно то, что гость увидит у себя */
+body[data-device="phone"]  { --device-w:393px;  --device-h:852px;  --device-r:52px; }
+body[data-device="max"]    { --device-w:430px;  --device-h:932px;  --device-r:54px; }
+body[data-device="pixel"]  { --device-w:412px;  --device-h:892px;  --device-r:44px; }
+body[data-device="compact"]{ --device-w:360px;  --device-h:780px;  --device-r:40px; }
+body[data-device="small"]  { --device-w:375px;  --device-h:667px;  --device-r:34px; }
 body[data-device="tablet"] { --device-w:768px;  --device-h:1024px; --device-r:34px; }
 body[data-device="wide"]   { --device-w:1024px; --device-h:768px;  --device-r:28px; }
-body[data-device="custom"] { --device-w:var(--custom-w,392px); --device-h:var(--custom-h,844px); --device-r:32px; }
+body[data-device="custom"] { --device-w:var(--custom-w,393px); --device-h:var(--custom-h,852px); --device-r:32px; }
 body[data-device="full"]{
   --device-w:min(100%,1180px);
   --device-h:calc(100dvh - var(--topbar-h) - 52px);
   --device-r:30px;
 }
+/* рамка в 90% выше окна: прилипание спрятало бы нижнюю навигацию, поэтому листаем страницу */
+body[data-device-fits="no"] .device-wrap{position:static;}
+
+/* настоящий телефон (уже 560 px): муляж корпуса, статус-бар и масштабы только мешают
+   тыкать — приложение отдаётся под весь экран, как оно и выглядит у гостя */
+body[data-shell="bare"][data-mode="client"] .stage{padding:6px 0 24px;}
+body[data-shell="bare"][data-mode="client"] .client-stage{gap:18px;}
+body[data-shell="bare"][data-mode="client"] .device{
+  /* 6 px — верхний отступ сцены над шапкой: иначе рамка на несколько пикселей вылезает за экран */
+  width:100%;height:calc(100dvh - var(--topbar-h) - 6px);
+  padding:0;border-radius:0;background:var(--bg);box-shadow:none;zoom:1;
+}
+body[data-shell="bare"][data-mode="client"] .device-screen{border-radius:0;}
+body[data-shell="bare"][data-mode="client"] .statusbar{display:none;}
+body[data-shell="bare"] .inspector{padding:0 12px;}
+body[data-shell="bare"] .device-wrap{position:static;}
 
 /* широкая раскладка: инспектор уходит под макет, сетка становится шире */
 body[data-size-class="lg"] .client-stage{grid-template-columns:minmax(0,1fr);max-width:1560px;}
