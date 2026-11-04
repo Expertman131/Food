@@ -821,6 +821,8 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 }
 @media (max-width:960px){
   .client-stage{grid-template-columns:minmax(0,1fr);gap:22px;}
+  /* инспектор уехал под телефон в ту же колонку: липкая рамка легла бы поверх его списка */
+  .device-wrap{position:static;}
   .inspector{position:static;}
   .admin-app{grid-template-columns:1fr;}
   .admin-side{border-right:0;border-bottom:1px solid var(--line-soft);}
