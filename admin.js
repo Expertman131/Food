@@ -227,6 +227,7 @@ function adminOrders(){
 function adminMenu(){
   const cats = CATEGORIES.filter(c => c.id !== 'all');
   const list = DISHES;
+  const featured = list.filter(d => d.popular);
   const active = list.filter(dishAvailable).length;
   const stopped = list.length - active;
   return `
@@ -240,7 +241,7 @@ function adminMenu(){
   <div class="a-panel">
     <h3>Блюда и цены</h3>
     <table class="a-table">
-      <thead><tr><th scope="col"><span class="sr-only">Фото</span></th><th scope="col">Название</th><th scope="col">Категория</th><th scope="col">Вес</th><th scope="col">Цена</th><th scope="col">Статус</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
+      <thead><tr><th scope="col"><span class="sr-only">Фото</span></th><th scope="col">Название</th><th scope="col">Категория</th><th scope="col">Вес</th><th scope="col">Цена</th><th scope="col">На главной</th><th scope="col">Статус</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${list.map(d => `
           <tr class="${dishAvailable(d)?'':'is-stopped'}">
@@ -249,6 +250,11 @@ function adminMenu(){
             <td class="muted">${CATEGORIES.find(c=>c.id===d.cat).name}</td>
             <td class="muted">${d.unit}</td>
             <td><b>${fmt(d.price)}</b></td>
+            <td>
+              <button class="a-btn star ${d.popular?'is-on':''}" aria-pressed="${d.popular?'true':'false'}"
+                aria-label="${d.popular?'Убрать «'+d.name+'» с главной':'Показать «'+d.name+'» на главной'}"
+                data-act="admin-featured" data-id="${d.id}">${icon('star')}</button>
+            </td>
             <td><span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span></td>
             <td>
               <div class="a-row">
@@ -259,6 +265,20 @@ function adminMenu(){
           </tr>`).join('')}
       </tbody>
     </table>
+  </div>
+
+  <div class="a-panel" style="margin-top:16px">
+    <h3>Лента «Попробуйте любимое» на главной</h3>
+    <p class="muted" style="font-size:13px">Отмеченные блюда гость видит на главной без прокрутки. Не больше ${RULES.featuredMax}: главная не должна превращаться в каталог.</p>
+    ${featured.length ? featured.map(d => `
+      <div class="sum-row">
+        <span class="row-star">${icon('star')}<span>${d.name}</span>${dishAvailable(d)?'':'<span class="a-pill red" style="margin-left:8px">в стоп-листе — гостю не виден</span>'}</span>
+        <span class="val">
+          <span class="muted" style="font-size:12px;margin-right:8px">${fmt(d.price)}</span>
+          <button class="a-btn" data-act="admin-featured" data-id="${d.id}" aria-label="Убрать «${d.name}» с главной">${icon('x')}</button>
+        </span>
+      </div>`).join('') : `<div class="sum-row"><span>Ничего не отмечено — лента на главной пустая</span><span class="val">0 из ${RULES.featuredMax}</span></div>`}
+    ${featured.length ? `<div class="sum-row" style="border-top:1px solid var(--line-soft);margin-top:8px;padding-top:10px"><span class="muted" style="font-size:12.5px">Занято мест в ленте</span><span class="val">${featured.length} из ${RULES.featuredMax}</span></div>` : ''}
   </div>
 
   <div class="a-grid a-grid-3" style="margin-top:16px">
@@ -665,6 +685,18 @@ document.addEventListener('click', ev => {
       toast('Заказ №' + o.no + ' отклонён: ' + el.dataset.reason);
       render();
     }
+  }
+  if (act === 'admin-featured'){
+    const d = dishById(el.dataset.id);
+    if (!d) return;
+    if (!d.popular && DISHES.filter(x => x.popular).length >= RULES.featuredMax){
+      toast('В ленте главной уже ' + RULES.featuredMax + ' блюд — снимите одно, чтобы поставить другое');
+      return;
+    }
+    d.popular = !d.popular;
+    renderAdmin();
+    render();
+    toast(d.popular ? d.name + ' — теперь в ленте «Попробуйте любимое»' : d.name + ' — убран с главной');
   }
   if (act === 'admin-stoplist'){
     const d = dishById(el.dataset.id);

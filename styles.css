@@ -730,6 +730,12 @@ body[data-mode="admin"] .tb-size{display:none;}
 .a-btn:hover{color:var(--text);border-color:rgba(198,241,110,.45);}
 .a-btn.primary{background:var(--lime);color:#0B1008;border-color:var(--lime);font-weight:600;}
 .a-btn.danger{color:var(--danger);border-color:rgba(242,133,107,.4);}
+/* отметка «блюдо на главной» — звезда в таблице меню */
+.a-btn.star{width:44px;padding:10px;display:grid;place-items:center;color:var(--muted);}
+.a-btn.star .ic{width:18px;height:18px;}
+.a-btn.star.is-on{color:var(--lime);border-color:rgba(198,241,110,.5);background:rgba(198,241,110,.10);}
+.row-star{display:inline-flex;align-items:center;gap:8px;}
+.row-star .ic{width:16px;height:16px;color:var(--lime);}
 .a-row{display:flex;gap:8px;flex-wrap:wrap;}
 
 .a-tabs{display:flex;gap:8px;margin-bottom:18px;}

@@ -390,7 +390,7 @@ function promoRail(){
 
 function scrHome(){
   const set = dishById('d-set-w');
-  const popular = DISHES.filter(d => d.popular);
+  const popular = DISHES.filter(d => d.popular && dishAvailable(d));
   const last = state.orders[0];
   return `
   ${appHeader()}
@@ -447,11 +447,12 @@ function scrHome(){
       </div>
       <button class="link-line" data-act="go" data-screen="catalog">Все ${DISHES.length} ${plural(DISHES.length,'блюдо','блюда','блюд')} ${icon('arrowRight')}</button>
     </div>
+    ${popular.length ? `
     <div class="section-head" style="margin-top:18px">
       <h2 class="h2">Попробуйте любимое</h2>
       <span class="count">${popular.length} ${plural(popular.length,'блюдо','блюда','блюд')}</span>
     </div>
-    <div class="dish-grid">${popular.map(d => dishCard(d)).join('')}</div>
+    <div class="dish-grid">${popular.map(d => dishCard(d)).join('')}</div>` : ''}
     <div class="cats-head">Категории</div>
     <div class="chips-wrap">
       <div class="chips" id="homeChips" role="group" aria-label="Категории меню — быстрый переход">
