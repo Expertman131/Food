@@ -394,6 +394,14 @@ function scrHome(){
   const last = state.orders[0];
   return `
   ${appHeader()}
+  <section class="section" style="padding-bottom:0;margin-bottom:14px">
+    <label class="search" style="margin-bottom:0">
+      ${icon('search')}
+      <input type="search" placeholder="Найти любимые роллы" id="homeSearch" aria-label="Поиск по меню"
+        autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search"
+        value="${state.query}" data-act="search">
+    </label>
+  </section>
   <section class="section">
     <div class="hero">
       <img src="${set.img}" alt="">
@@ -439,20 +447,17 @@ function scrHome(){
       </div>
       <button class="link-line" data-act="go" data-screen="catalog">Все ${DISHES.length} ${plural(DISHES.length,'блюдо','блюда','блюд')} ${icon('arrowRight')}</button>
     </div>
-    <label class="search">
-      ${icon('search')}
-      <input type="search" placeholder="Найти любимые роллы" id="homeSearch" aria-label="Поиск по меню"
-        autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search"
-        value="${state.query}" data-act="search">
-    </label>
-    <div class="chips" id="homeChips" role="group" aria-label="Категории меню">
-      ${CATEGORIES.filter(c => c.id !== 'all').map(c => `<button class="chip" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
-    </div>
-    <div class="section-head" style="margin-top:22px">
+    <div class="section-head" style="margin-top:18px">
       <h2 class="h2">Попробуйте любимое</h2>
       <span class="count">${popular.length} ${plural(popular.length,'блюдо','блюда','блюд')}</span>
     </div>
     <div class="dish-grid">${popular.map(d => dishCard(d)).join('')}</div>
+    <div class="cats-head">Категории</div>
+    <div class="chips-wrap">
+      <div class="chips" id="homeChips" role="group" aria-label="Категории меню — быстрый переход">
+        ${CATEGORIES.filter(c => c.id !== 'all').map(c => `<button class="chip chip-nav" data-act="cat" data-cat="${c.id}">${c.name}${icon('arrowRight')}</button>`).join('')}
+      </div>
+    </div>
   </section>`;
 }
 
@@ -471,8 +476,10 @@ function scrCatalog(){
         autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search"
         value="${state.query}" data-act="search">
     </label>
-    <div class="chips" role="group" aria-label="Категории меню">
-      ${CATEGORIES.map(c => `<button class="chip ${state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+    <div class="chips-wrap">
+      <div class="chips" role="group" aria-label="Категории меню">
+        ${CATEGORIES.map(c => `<button class="chip ${state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+      </div>
     </div>
   </section>
   <section class="section" style="margin-top:20px">
@@ -1280,8 +1287,10 @@ function scrQrMenu(){
     </div>
   </section>
   <section class="section" style="margin-bottom:0">
-    <div class="chips" role="group" aria-label="Категории меню в зале">
-      ${CATEGORIES.map(c => `<button class="chip ${state.qrCat===c.id?'is-active':''}" data-act="qr-cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+    <div class="chips-wrap">
+      <div class="chips" role="group" aria-label="Категории меню в зале">
+        ${CATEGORIES.map(c => `<button class="chip ${state.qrCat===c.id?'is-active':''}" data-act="qr-cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+      </div>
     </div>
   </section>
   <section class="section" style="margin-top:18px">
