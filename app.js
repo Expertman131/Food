@@ -309,10 +309,6 @@ function appHeader(){
 const hasFavs = () => state.favorites.length > 0;
 
 const locById = id => LOCATIONS.find(l => l.id === id) || LOCATIONS[0];
-const tableLine = () => state.table
-  ? `Стол ${state.table.no} · ${locById(state.table.locId).name}`
-  : '';
-const channelLine = t => t === 'table' ? 'К столу' : t === 'pickup' ? 'Самовывоз' : 'Доставка';
 
 function appBar(title, onBack = true){
   return `
@@ -766,7 +762,7 @@ function scrCheckout(){
     <div class="card">
       <div class="sum-row"><span>Блюда</span><span class="val">${fmt(t.sub)}</span></div>
       <div class="sum-row"><span>Доставка</span><span class="val ${t.delivery===0?'free-tag':''}">${t.delivery===0?(table?'К столу бесплатно':'Бесплатно'):fmt(t.delivery)}</span></div>
-      <div class="sum-row"><span>${channelLine(state.deliveryType)}</span><span class="val">${table ? `Стол ${state.table.no}` : (state.slot ? slotFull(state.slot) : 'Как можно скорее')}</span></div>
+      <div class="sum-row"><span>${table ? 'Стол' : 'Время'}</span><span class="val">${table ? state.table.no : (state.slot ? slotFull(state.slot) : 'Как можно скорее')}</span></div>
       <div class="sum-row is-total"><span class="lbl">К оплате</span><span class="val">${fmt(t.total)}</span></div>
       ${state.errors.minOrder ? `<p class="err" role="alert">${state.errors.minOrder}</p>` : ''}
     </div>
@@ -842,7 +838,7 @@ function scrPayment(){
         return `<div class="sum-row"><span>${d.name} × ${l.qty}</span><span class="val">${fmt(lineUnit(l)*l.qty)}</span></div>`;
       }).join('')}
       <div class="sum-row"><span>Доставка</span><span class="val ${t.delivery===0?'free-tag':''}">${t.delivery===0?(state.deliveryType==='table'?'К столу бесплатно':'Бесплатно'):fmt(t.delivery)}</span></div>
-      <div class="sum-row"><span>${channelLine(state.deliveryType)}</span><span class="val">${state.deliveryType==='table' ? `Стол ${state.table.no}` : (state.slot ? slotFull(state.slot) : 'Как можно скорее')}</span></div>
+      <div class="sum-row"><span>${state.deliveryType==='table' ? 'Стол' : 'Время'}</span><span class="val">${state.deliveryType==='table' ? state.table.no : (state.slot ? slotFull(state.slot) : 'Как можно скорее')}</span></div>
       ${t.discount ? `<div class="sum-row"><span>Промокод ${state.promo}</span><span class="val free-tag">−${fmt(t.discount)}</span></div>` : ''}
       ${t.bonusUse ? `<div class="sum-row"><span>Бонусы «Васаби»</span><span class="val free-tag">−${fmt(t.bonusUse)}</span></div>` : ''}
       <div class="sum-row is-total"><span class="lbl">К оплате</span><span class="val">${fmt(t.total)}</span></div>
@@ -1378,7 +1374,7 @@ function renderInspector(){
     <dt>Экран</dt><dd>${SCREENS[state.screen].title}</dd>
     <dt>Размер рамки</dt><dd id="sizeReadout">—</dd>`;
   $('#inspFeatures').innerHTML = FEATURES.map(f => `<li>${f}</li>`).join('');
-  updateSizeReadout();
+  fitDevice();
 }
 
 /* --------------------------------- тосты --------------------------------- */
@@ -1702,6 +1698,7 @@ function switchMode(mode){
   $('#adminStage').hidden = mode !== 'admin';
   if (mode === 'admin' && window.renderAdmin) window.renderAdmin();
   window.scrollTo(0, 0);
+  if (mode === 'client') fitDevice();
 }
 window.switchMode = switchMode;
 
@@ -1723,15 +1720,28 @@ function intendedDeviceWidth(){
 
 function updateSizeClass(){
   document.body.dataset.sizeClass = intendedDeviceWidth() >= 600 ? 'lg' : 'sm';
-  updateSizeReadout();
+  fitDevice();
 }
 
-function updateSizeReadout(){
-  const d = $('.device');
+/* Рамка не сплющивается: если не влезает в окно под шапкой, она масштабируется целиком.
+   offsetWidth при zoom остаётся исходным размером макета, поэтому им и считаем */
+function fitDevice(){
+  const wrap = $('.device-wrap'), d = $('.device');
+  if (!wrap || !d) return;
+  const w = d.offsetWidth, h = d.offsetHeight;
+  if (!w || !h) return;   // клиентская сцена сейчас скрыта (админка) — масштаба не считаем
+  const bar = parseInt(getComputedStyle(document.body).getPropertyValue('--topbar-h'), 10) || 67;
+  /* у пресета «во весь экран» ширина уже взята из окна: без неё масштаб устойчивее */
+  const fitsWidth = document.body.dataset.device === 'full' ? 1 : (wrap.clientWidth - 4) / w;
+  const scale = Math.min(1, fitsWidth, (innerHeight - bar - 44) / h);
+  document.body.style.setProperty('--fit-scale', scale.toFixed(4));
   const out = $('#sizeReadout');
-  if (!d || !out) return;
-  const r = d.getBoundingClientRect();
-  out.textContent = Math.round(r.width) + ' × ' + Math.round(r.height);
+  /* размеры в CSS-пикселях: видимый прямоугольник делим на масштаб — иначе цифры отстают на шаг */
+  if (out) {
+    const r = d.getBoundingClientRect();
+    out.textContent = Math.round(r.width / scale) + ' × ' + Math.round(r.height / scale)
+      + (scale < .995 ? ' · ' + Math.round(scale * 100) + '% окна' : '');
+  }
 }
 
 function applyDeviceSize(mode){
@@ -1755,9 +1765,9 @@ if (sizeSelect){
   sizeSelect.addEventListener('change', () => {
     const mode = sizeSelect.value;
     if (mode === 'custom'){
-      const r = $('.device').getBoundingClientRect();
-      $('#sizeW').value = Math.round(r.width);
-      $('#sizeH').value = Math.round(r.height);
+      const d = $('.device');
+      $('#sizeW').value = d.offsetWidth;
+      $('#sizeH').value = d.offsetHeight;
     }
     applyDeviceSize(mode);
   });
@@ -1766,8 +1776,22 @@ if (sizeSelect){
   const el = $('#' + id);
   if (el) el.addEventListener('input', () => applyDeviceSize('custom'));
 });
-window.addEventListener('resize', updateSizeClass);
+/* Шапка на узком окне переносится в две строки, поэтому прилипание телефона
+   и инспектора считается от её живой высоты, а не от постоянной числа */
+const topbarEl = $('.topbar');
+function syncTopbarHeight(){
+  if (!topbarEl) return;
+  document.body.style.setProperty('--topbar-h', Math.round(topbarEl.offsetHeight) + 'px');
+  fitDevice();
+}
+if (topbarEl && window.ResizeObserver){
+  /* border-box: шапка меняется и когда растёт только её padding, а не содержимое */
+  try { new ResizeObserver(syncTopbarHeight).observe(topbarEl, { box: 'border-box' }); }
+  catch (e) { new ResizeObserver(syncTopbarHeight).observe(topbarEl); }
+}
+window.addEventListener('resize', () => { syncTopbarHeight(); updateSizeClass(); });
 applyDeviceSize(document.body.dataset.device || 'phone');
+syncTopbarHeight();
 
 seedOrders();
 const hashTable = tableFromHash();
