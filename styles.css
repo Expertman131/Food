@@ -362,6 +362,8 @@ body[data-mode="admin"] .tb-size{display:none;}
   width:46px;height:27px;border-radius:999px;border:0;cursor:pointer;flex:none;
   background:var(--surface-2);position:relative;transition:.18s ease;
 }
+/* сам переключатель низкий, поэтому площадка под палец выше самого элемента */
+.opt-toggle::before{content:"";position:absolute;inset:-9px -4px;}
 .opt-toggle::after{
   content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;
   background:var(--muted);transition:.18s ease;

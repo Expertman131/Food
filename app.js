@@ -116,7 +116,7 @@ const SCREENS = {
   onboarding:  { title:'Вход по SMS',    icon:'phone',    tab:null,      cartbar:false }
 };
 const TABS = [
-  { id:'menu',    label:'Меню',    icon:'utensils', screen:'home' },
+  { id:'menu',    label:'Меню',    icon:'utensils', screen:'catalog' },
   { id:'cart',   label:'Корзина', icon:'bag',      screen:'cart' },
   { id:'orders', label:'Заказы',  icon:'receipt',  screen:'orders' },
   { id:'profile',label:'Профиль', icon:'user',     screen:'profile' }
@@ -1538,8 +1538,7 @@ const ACTIONS = {
   'qr-cat': (el) => { state.qrCat = el.dataset.cat; render(); },
   tab: (el) => {
     const t = TABS.find(x => x.id === el.dataset.tab);
-    if (t.id === 'menu') go('home', { top:true });
-    else go(t.screen, { top:true });
+    go(t.screen, { top:true });
   },
   mode: (el) => switchMode(el.dataset.mode),
   'open-dish': (el) => go('product', { dishId: el.dataset.dish }),
@@ -1816,7 +1815,9 @@ document.addEventListener('input', ev => {
   const el = ev.target;
   if (el.dataset && el.dataset.act === 'search'){
     state.query = el.value;
-    if (state.screen === 'home' || state.screen === 'catalog') render();
+    /* на главной поиск ничего не менял: там лента любимого, а ищется весь каталог */
+    if (state.screen === 'home') go('catalog');
+    else if (state.screen === 'catalog') render();
     const inp = document.querySelector('#viewport input[data-act="search"]');
     if (inp){ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
     return;
