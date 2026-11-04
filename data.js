@@ -137,6 +137,12 @@ const DISHES = [
   }
 ];
 
+/* Фото блюд: новую позицию в админке можно положить на любой снимок из набора */
+const DISH_IMAGES = [
+  'assets/sushi-boat.jpg', 'assets/philadelphia.jpg', 'assets/california.jpg',
+  'assets/tempura.jpg', 'assets/sashimi.jpg', 'assets/cheesecake.jpg', 'assets/latte.jpg'
+];
+
 const RULES = {
   deliveryPrice: 199,
   freeDeliveryFrom: 1500,
