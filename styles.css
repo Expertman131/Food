@@ -814,7 +814,7 @@ body[data-device="full"]{
 /* рамка в 90% выше окна: прилипание спрятало бы нижнюю навигацию, поэтому листаем страницу */
 body[data-device-fits="no"] .device-wrap{position:static;}
 
-/* настоящий телефон (уже 560 px): муляж корпуса, статус-бар и масштабы только мешают
+/* настоящий телефон (ширина до 560 px): муляж корпуса, статус-бар и масштабы только мешают
    тыкать — приложение отдаётся под весь экран, как оно и выглядит у гостя */
 body[data-shell="bare"][data-mode="client"] .stage{padding:6px 0 24px;}
 body[data-shell="bare"][data-mode="client"] .client-stage{gap:18px;}
