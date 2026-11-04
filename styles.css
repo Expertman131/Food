@@ -629,7 +629,8 @@ body[data-mode="admin"] .tb-size{display:none;}
 .insp-list-plain li::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--lime);flex:none;margin-top:7px;}
 
 /* ---------- админ-панель ---------- */
-.admin-stage{max-width:1440px;margin:0 auto;}
+/* контейнер, а не окно: админка подстраивается под свою ширину — и на телефоне, и в узком окне десктопа */
+.admin-stage{max-width:1440px;margin:0 auto;container-type:inline-size;container-name:admin;}
 .admin-frame{
   border-radius:18px;overflow:hidden;border:1px solid var(--line-soft);
   background:var(--panel);box-shadow:0 30px 80px rgba(0,0,0,.5);
@@ -641,7 +642,8 @@ body[data-mode="admin"] .tb-size{display:none;}
   margin-left:12px;flex:1;max-width:340px;background:#0D110D;border:1px solid var(--line-soft);
   border-radius:999px;padding:5px 14px;font-size:12px;color:var(--muted);
 }
-.admin-app{display:grid;grid-template-columns:236px 1fr;min-height:700px;}
+/* minmax(0,…) обязателен: 1fr берёт минимум из min-content и раздувал колонку за пределы рамки */
+.admin-app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:700px;}
 .admin-side{background:#0B0F0B;border-right:1px solid var(--line-soft);padding:18px 14px;display:flex;flex-direction:column;gap:22px;}
 .aside-brand{display:flex;align-items:center;gap:10px;padding:4px 6px;}
 .aside-nav{display:flex;flex-direction:column;gap:4px;}
@@ -790,6 +792,8 @@ select.input-plain{appearance:none;}
 .switch-row:last-of-type{border-bottom:0;}
 
 .a-grid-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+/* широкая колонка слева + узкая справа; на мобильных схлопывается в одну */
+.a-grid-split{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);}
 
 /* ---------- размеры экрана ---------- */
 body[data-device="phone"]  { --device-w:392px;  --device-h:844px;  --device-r:52px; }
@@ -816,17 +820,11 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 @media (max-width:1200px){
   body[data-size-class="lg"]{--dish-cols:3;}
 }
-@media (max-width:1080px){
-  .a-grid-2{grid-template-columns:1fr;}
-}
 @media (max-width:960px){
   .client-stage{grid-template-columns:minmax(0,1fr);gap:22px;}
   /* инспектор уехал под телефон в ту же колонку: липкая рамка легла бы поверх его списка */
   .device-wrap{position:static;}
   .inspector{position:static;}
-  .admin-app{grid-template-columns:1fr;}
-  .admin-side{border-right:0;border-bottom:1px solid var(--line-soft);}
-  .aside-nav{flex-direction:row;flex-wrap:wrap;}
 }
 @media (max-width:820px){
   body[data-size-class="lg"]{--dish-cols:2;--slot-cols:4;}
@@ -837,8 +835,6 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 }
 @media (max-width:640px){
   .stage{padding:16px 12px 40px;}
-  .a-orders{grid-template-columns:1fr;}
-  .a-grid-4,.a-grid-3{grid-template-columns:1fr 1fr;}
   .topbar{flex-wrap:wrap;gap:10px;padding:10px 14px;}
   .tb-right{gap:8px;flex:1;justify-content:flex-end;}
   .tb-size select{max-width:132px;}
@@ -885,4 +881,59 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
   .qr-print-page{padding:0;page-break-after:always;}
   .qr-print-page:last-child{page-break-after:auto;}
   .qr-print-card{print-color-adjust:exact;}
+}
+
+/* ---------- адаптив админ-панели ----------
+   Блок в конце файла: специфичность та же, что у базовых правил, поэтому
+   переопределение работает только за счёт порядка в источнике.
+   Ориентир — ширина контейнера, а не окна: узкое окно десктопа получает
+   тот же расклад, что и телефон.
+   minmax(0,1fr) вместо 1fr обязателен: автоматический минимум колонки равен
+   min-content, поэтому широкая таблица раздувала бы ряд вместо внутренней прокрутки */
+
+@container admin (max-width:1100px){
+  .a-grid-split,.a-grid-2{grid-template-columns:minmax(0,1fr);}
+  .a-grid-4{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+@container admin (max-width:900px){
+  .admin-app{grid-template-columns:minmax(0,1fr);min-height:0;}
+  .admin-side{border-right:0;border-bottom:1px solid var(--line-soft);padding:14px;}
+  /* пункты столбцом съедали бы пол-экрана, а лента с прокруткой прячет половину разделов: перенос */
+  .aside-nav{flex-direction:row;flex-wrap:wrap;gap:6px;}
+  .aside-nav button{width:auto;flex:none;}
+  .aside-note{margin-top:0;}
+  .admin-top{padding:14px 16px;flex-wrap:wrap;}
+  .admin-body{padding:16px 14px 32px;}
+}
+
+@container admin (max-width:760px){
+  /* таблица шире панели: пусть крутится она, а не вся страница */
+  .a-panel{overflow-x:auto;}
+  .a-table{min-width:560px;}
+  .a-grid-3{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .a-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
+  .a-tabs::-webkit-scrollbar{display:none;}
+  .a-tabs button{flex:none;}
+}
+
+@container admin (max-width:560px){
+  .a-orders{grid-template-columns:minmax(0,1fr);}
+  /* вкладки в одну строку прятали бы последнюю: переносим, чтобы все статусы были на виду */
+  .a-tabs{flex-wrap:wrap;overflow:visible;scrollbar-width:auto;}
+  .a-stat{padding:14px 15px;}
+  .a-stat .val{font-size:22px;}
+  .a-panel{padding:15px;}
+  /* подушки вместо min-height: у кнопки без flex текст центрируется симметричным padding'ом */
+  .a-btn,.a-tabs button{padding:13px 15px;font-size:13px;}
+  .aside-nav button{padding:11px 12px;font-size:13px;}
+  /* адрес меню длиннее экрана: переносим, а не прячем за многоточие */
+  .qr-url{flex-direction:column;align-items:stretch;}
+  .qr-url code{white-space:normal;overflow:visible;text-overflow:clip;word-break:break-all;}
+  .qr-url .a-btn{align-self:flex-start;}
+}
+
+@container admin (max-width:420px){
+  .a-grid-4,.a-grid-3{grid-template-columns:minmax(0,1fr);}
+  .admin-url{display:none;}
 }

@@ -245,7 +245,7 @@ function adminMarketing(){
     <div class="a-stat"><div class="lbl">Баннеров на главной</div><div class="val">2</div><div class="delta">показ 100%</div></div>
   </div>
 
-  <div class="a-grid a-grid-2" style="grid-template-columns:1.2fr 1fr">
+  <div class="a-grid a-grid-split" style="margin-bottom:16px">
     <div class="a-panel">
       <h3>Промокоды</h3>
       <table class="a-table">
@@ -352,7 +352,7 @@ function adminAnalytics(){
     <div class="a-stat"><div class="lbl">Доставка / самовывоз</div><div class="val">72% / 28%</div><div class="delta">среднее время 41 мин</div></div>
   </div>
 
-  <div class="a-grid a-grid-2" style="grid-template-columns:1.3fr 1fr">
+  <div class="a-grid a-grid-split" style="margin-bottom:16px">
     <div class="a-panel">
       <h3>Заказы по дням недели</h3>
       <div style="display:flex;align-items:flex-end;gap:12px;height:170px;padding-top:10px">
