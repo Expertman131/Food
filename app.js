@@ -314,7 +314,7 @@ function appBar(title, onBack = true){
   return `
   <div class="app-bar">
     ${onBack ? `<button class="back-btn" data-act="back" aria-label="Назад">${icon('arrowLeft')}</button>` : ''}
-    <h2>${title}</h2>
+    <p class="ab-title">${title}</p>
   </div>`;
 }
 
@@ -362,13 +362,13 @@ function promoRail(){
   return `
   <section class="section">
     <div class="section-head">
-      <h3 class="h2">Акции сегодня</h3>
+      <h2 class="h2">Акции сегодня</h2>
       <div class="rail-tools">
         <button class="rail-btn" data-act="promo-prev" aria-label="Предыдущая акция">${icon('arrowLeft')}</button>
         <button class="rail-btn" data-act="promo-next" aria-label="Следующая акция">${icon('arrowRight')}</button>
       </div>
     </div>
-    <div class="promo-rail" id="promoRail">
+    <div class="promo-rail" id="promoRail" role="group" aria-label="Акции ресторана">
       ${list.map(b => `
         <button class="promo-card" data-act="open-banner" data-banner="${b.id}">
           <span class="promo-img"><img src="${b.img}" alt=""><span class="promo-tag">${b.tag}</span></span>
@@ -439,15 +439,17 @@ function scrHome(){
       </div>
       <button class="link-line" data-act="go" data-screen="catalog">Все ${DISHES.length} блюд ${icon('arrowRight')}</button>
     </div>
-    <div class="search">
+    <label class="search">
       ${icon('search')}
-      <input type="search" placeholder="Найти любимые роллы" id="homeSearch" value="${state.query}" data-act="search">
-    </div>
-    <div class="chips" id="homeChips">
+      <input type="search" placeholder="Найти любимые роллы" id="homeSearch" aria-label="Поиск по меню"
+        autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search"
+        value="${state.query}" data-act="search">
+    </label>
+    <div class="chips" id="homeChips" role="group" aria-label="Категории меню">
       ${CATEGORIES.slice(0,5).map(c => `<button class="chip ${state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
     </div>
     <div class="section-head" style="margin-top:22px">
-      <h3 class="h2">Попробуйте любимое</h3>
+      <h2 class="h2">Попробуйте любимое</h2>
       <span class="count">${popular.length} блюд</span>
     </div>
     <div class="dish-grid">${popular.map(d => dishCard(d)).join('')}</div>
@@ -459,21 +461,23 @@ function scrCatalog(){
   return `
   ${appHeader()}
   <section class="section" style="padding-top:4px">
-    <h2 class="h1">Наше меню</h2>
+    <h1 class="h1">Наше меню</h1>
     <div class="muted small" style="margin-top:6px">Вкус, к которому возвращаются</div>
   </section>
   <section class="section" style="margin-bottom:0">
-    <div class="search">
+    <label class="search">
       ${icon('search')}
-      <input type="search" placeholder="Найти любимые роллы" value="${state.query}" data-act="search">
-    </div>
-    <div class="chips">
+      <input type="search" placeholder="Найти любимые роллы" aria-label="Поиск по меню"
+        autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search"
+        value="${state.query}" data-act="search">
+    </label>
+    <div class="chips" role="group" aria-label="Категории меню">
       ${CATEGORIES.map(c => `<button class="chip ${state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
     </div>
   </section>
   <section class="section" style="margin-top:20px">
     <div class="section-head">
-      <h3 class="h2">${state.cat==='all'?'Все блюда':CATEGORIES.find(c=>c.id===state.cat).name}</h3>
+      <h2 class="h2">${state.cat==='all'?'Все блюда':CATEGORIES.find(c=>c.id===state.cat).name}</h2>
       <span class="count">${list.length} ${plural(list.length,'блюдо','блюда','блюд')}</span>
     </div>
     ${list.length ? `<div class="dish-grid">${list.map(d => dishCard(d)).join('')}</div>`
@@ -526,18 +530,18 @@ function scrProduct(){
     <div class="panel-olive info-panel">
       ${icon('leaf')}
       <div>
-        <h4>Готовим специально для вас</h4>
+        <h2>Готовим специально для вас</h2>
         <p>${d.note || 'Только после заказа — свой соус, свежий имбирь и настоящий васаби.'}</p>
       </div>
     </div>
   </section>
   ${mods && !out ? `
   <section class="section">
-    <div class="section-head"><h3 class="h2">Дополнительно</h3><span class="count">по желанию</span></div>
+    <div class="section-head"><h2 class="h2">Дополнительно</h2><span class="count">по желанию</span></div>
     <div class="card" style="padding:4px 18px">${mods}</div>
   </section>` : ''}
   <section class="section">
-    <div class="section-head"><h3 class="h2">Состав и аллергены</h3></div>
+    <div class="section-head"><h2 class="h2">Состав и аллергены</h2></div>
     <div class="card">
       <p class="soft small">${d.composition || 'Состав уточняется у оператора.'}</p>
       <p class="muted small" style="margin-top:10px">Содержит: ${(d.allergens || []).length ? d.allergens.join(', ') : 'не выявлено аллергенов'}.</p>
@@ -633,7 +637,7 @@ function scrCart(){
   const upsellBlock = ups.length ? `
   <section class="section">
     <div class="section-head">
-      <h3 class="h2">Добавьте к заказу</h3>
+      <h2 class="h2">Добавьте к заказу</h2>
       <button class="link-line" data-act="upsell-add-all">Добавить всё</button>
     </div>
     <div class="upsell-row">
@@ -677,7 +681,7 @@ function scrCart(){
   </section>` : ''}
   <section class="section">
     <div class="card">
-      <h3 class="h2">Всё для вашего вечера</h3>
+      <h2 class="h2">Всё для вашего вечера</h2>
       <p class="muted small" style="margin-top:6px">Соевый соус, имбирь и васаби включены.</p>
       <div style="margin-top:12px">
         <div class="sum-row"><span>Блюда</span><span class="val">${fmt(t.sub)}</span></div>
@@ -731,13 +735,14 @@ function scrCheckout(){
     </div>
     <div class="field" style="margin-top:16px">
       <label for="fComment">Пожелания к столу (необязательно)</label>
-      <textarea id="fComment" data-act="f" data-field="comment" placeholder="Например: без имбиря, принести сразу, отдельная тарелка">${state.comment}</textarea>
+      <textarea id="fComment" data-act="f" data-field="comment" placeholder="Например: без имбиря, принести сразу, отдельная тарелка"
+        autocapitalize="sentences" enterkeyhint="done">${state.comment}</textarea>
     </div>
   </section>` : pickup ? `
   <section class="section">
-    <h3 class="h2" style="margin-bottom:12px">Точка самовывоза</h3>
+    <h2 class="h2" style="margin-bottom:12px">Точка самовывоза</h2>
     ${LOCATIONS.map(l => `
-      <div class="pay-row ${state.locationId===l.id?'is-on':''}" data-act="pick-location" data-id="${l.id}" style="display:flex;gap:13px;align-items:center">
+      <div class="pay-row ${state.locationId===l.id?'is-on':''}" data-act="pick-location" data-id="${l.id}" role="button" tabindex="0" aria-pressed="${state.locationId===l.id}" style="display:flex;gap:13px;align-items:center">
         <div class="pay-icon">${icon('pin')}</div>
         <div class="grow">
           <div class="pay-name">${l.name}</div>
@@ -748,36 +753,43 @@ function scrCheckout(){
     <p class="muted small" style="margin-top:12px">Готовность заказа — ${RULES.leadPickup} минут после подтверждения.</p>
   </section>` : `
   <section class="section">
-    <h3 class="h2" style="margin-bottom:14px">Ваши контакты</h3>
+    <h2 class="h2" style="margin-bottom:14px">Ваши контакты</h2>
     <div class="field">
       <label for="fName">Имя</label>
-      <input id="fName" data-act="f" data-field="name" value="${state.user.name}" placeholder="Как к вам обращаться">
-      ${state.errors.name ? `<p class="err" role="alert">${state.errors.name}</p>` : ''}
+      <input id="fName" data-act="f" data-field="name" value="${state.user.name}" placeholder="Как к вам обращаться"
+        autocomplete="given-name" autocapitalize="words" enterkeyhint="next"
+        ${state.errors.name ? 'aria-invalid="true" aria-describedby="err-fName"' : ''}>
+      ${state.errors.name ? `<p class="err" id="err-fName" role="alert">${state.errors.name}</p>` : ''}
     </div>
     <div class="field">
       <label for="fPhone">Телефон</label>
-      <input id="fPhone" type="tel" data-act="f" data-field="phone" value="${state.user.phone}" placeholder="+7 900 000-00-00">
-      ${state.errors.phone ? `<p class="err" role="alert">${state.errors.phone}</p>` : ''}
+      <input id="fPhone" type="tel" data-act="f" data-field="phone" value="${state.user.phone}" placeholder="+7 900 000-00-00"
+        autocomplete="tel" inputmode="tel" enterkeyhint="next"
+        ${state.errors.phone ? 'aria-invalid="true" aria-describedby="err-fPhone"' : ''}>
+      ${state.errors.phone ? `<p class="err" id="err-fPhone" role="alert">${state.errors.phone}</p>` : ''}
       <p class="hint">Курьер позвонит только если не найдёт домофон.</p>
     </div>
   </section>
   <section class="section">
-    <h3 class="h2" style="margin-bottom:14px">Адрес доставки</h3>
+    <h2 class="h2" style="margin-bottom:14px">Адрес доставки</h2>
     ${addressBook()}
     <div class="field" style="margin-top:16px">
       <label for="fAddr">Улица, дом, квартира</label>
-      <input id="fAddr" data-act="f" data-field="address" value="${state.address}" placeholder="Улица, дом, квартира">
-      ${state.errors.address ? `<p class="err" role="alert">${state.errors.address}</p>` : ''}
+      <input id="fAddr" data-act="f" data-field="address" value="${state.address}" placeholder="Улица, дом, квартира"
+        autocomplete="street-address" autocapitalize="words" enterkeyhint="next"
+        ${state.errors.address ? 'aria-invalid="true" aria-describedby="err-fAddr"' : ''}>
+      ${state.errors.address ? `<p class="err" id="err-fAddr" role="alert">${state.errors.address}</p>` : ''}
     </div>
     <div class="field">
       <label for="fComment">Комментарий (необязательно)</label>
-      <textarea id="fComment" data-act="f" data-field="comment" placeholder="Подъезд, этаж, домофон, пожелания">${state.comment}</textarea>
+      <textarea id="fComment" data-act="f" data-field="comment" placeholder="Подъезд, этаж, домофон, пожелания"
+        autocapitalize="sentences" enterkeyhint="done">${state.comment}</textarea>
     </div>
   </section>`}
 
   ${table ? '' : `
   <section class="section">
-    <h3 class="h2" style="margin-bottom:12px">${pickup ? 'Время самовывоза' : 'Время доставки'}</h3>
+    <h2 class="h2" style="margin-bottom:12px">${pickup ? 'Время самовывоза' : 'Время доставки'}</h2>
     <div class="seg">
       <button class="${state.timeMode==='asap'?'is-active':''}" data-act="time-mode" data-mode="asap">Как можно скорее</button>
       <button class="${state.timeMode==='slot'?'is-active':''}" data-act="time-mode" data-mode="slot">К определённому времени</button>
@@ -789,7 +801,7 @@ function scrCheckout(){
   </section>`}
 
   <section class="section">
-    <h3 class="h2" style="margin-bottom:14px">Способ оплаты</h3>
+    <h2 class="h2" style="margin-bottom:14px">Способ оплаты</h2>
     ${table ? payMethodRow('table','cash','Оплата у стола','Наличные, карта или СБП — официант принесёт терминал к столу') : ''}
     ${payMethodRow('card','card','Картой онлайн','Visa, Mastercard, МИР — ЮKassa')}
     ${payMethodRow('sbp','wallet','СБП','Оплата по QR-коду через приложение банка')}
@@ -830,7 +842,7 @@ function addressBook(){
   return `
   <div class="addr-list">
     ${state.addresses.map(a => `
-      <div class="addr-row ${state.addressId===a.id?'is-on':''}" data-act="addr-select" data-id="${a.id}">
+      <div class="addr-row ${state.addressId===a.id?'is-on':''}" data-act="addr-select" data-id="${a.id}" role="button" tabindex="0" aria-pressed="${state.addressId===a.id}">
         <div class="pay-icon">${icon(a.label === 'Дом' ? 'home' : 'office')}</div>
         <div class="grow">
           <div class="pay-name">${a.label}</div>
@@ -843,15 +855,17 @@ function addressBook(){
   </div>
   <div class="field" style="margin-top:14px">
     <label for="fNewAddr">Новый адрес</label>
-    <input id="fNewAddr" data-act="f" data-field="newAddress" value="${state.newAddress}" placeholder="Улица, дом, квартира">
-    ${state.errors.newAddress ? `<p class="err" role="alert">${state.errors.newAddress}</p>` : ''}
+    <input id="fNewAddr" data-act="f" data-field="newAddress" value="${state.newAddress}" placeholder="Улица, дом, квартира"
+      autocomplete="street-address" autocapitalize="words" enterkeyhint="done"
+      ${state.errors.newAddress ? 'aria-invalid="true" aria-describedby="err-fNewAddr"' : ''}>
+    ${state.errors.newAddress ? `<p class="err" id="err-fNewAddr" role="alert">${state.errors.newAddress}</p>` : ''}
   </div>
   <button class="btn-outline" data-act="addr-add">${icon('plus')} Добавить адрес</button>`;
 }
 
 function payMethodRow(id, ico, name, note){
   return `
-  <div class="pay-row ${state.payMethod===id?'is-on':''}" data-act="pay-method" data-id="${id}">
+  <div class="pay-row ${state.payMethod===id?'is-on':''}" data-act="pay-method" data-id="${id}" role="button" tabindex="0" aria-pressed="${state.payMethod===id}">
     <div class="pay-icon">${icon(ico)}</div>
     <div class="grow">
       <div class="pay-name">${name}</div>
@@ -885,17 +899,19 @@ function scrPayment(){
   </section>
 
   <section class="section">
-    <h3 class="h2" style="margin-bottom:12px">Промокод</h3>
+    <h2 class="h2" style="margin-bottom:12px">Промокод</h2>
     <div class="row gap-10">
-      <div class="grow"><input class="input-plain" data-act="f" data-field="promoInput" value="${state.promoInput || ''}" placeholder="WASABI10"></div>
+      <div class="grow"><input class="input-plain" data-act="f" data-field="promoInput" value="${state.promoInput || ''}" placeholder="WASABI10"
+        aria-label="Промокод" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done"
+        ${state.promoMsg ? 'aria-describedby="promoMsg"' : ''}></div>
       <button class="btn-outline" data-act="apply-promo">Применить</button>
     </div>
-    ${state.promoMsg ? `<p class="${promoOk?'ok':'err'}">${state.promoMsg}</p>` : ''}
+    ${state.promoMsg ? `<p class="${promoOk?'ok':'err'}" id="promoMsg"${promoOk?'':' role="alert"'}>${state.promoMsg}</p>` : ''}
     <p class="muted small" style="margin-top:10px">Действующие: ${activePromos().map(p => `${p.code} (${p.label}${p.min ? ', от ' + fmt(p.min) : ''})`).join(', ')}.</p>
   </section>
 
   <section class="section">
-    <div class="section-head"><h3 class="h2">Бонусы «Васаби»</h3><span class="count">баланс 0 ${NBSP}баллов</span></div>
+    <div class="section-head"><h2 class="h2">Бонусы «Васаби»</h2><span class="count">баланс 0 ${NBSP}баллов</span></div>
     <div class="card">
       <p class="small soft">Программа лояльности iiko: баланс недоступен — нет подключения к iiko. Начисления и списания не выполняются.</p>
       <div class="bonus-bar"><i style="width:0%"></i></div>
@@ -969,7 +985,7 @@ function scrStatus(){
 
   <section class="section">
     <div class="card">
-      <h3 class="h2">Состав заказа</h3>
+      <h2 class="h2">Состав заказа</h2>
       <div style="margin-top:10px">
         ${order.items.map(i => `<div class="sum-row"><span>${i.name} × ${i.qty}</span><span class="val">${fmt(i.price*i.qty)}</span></div>`).join('')}
         <div class="sum-row"><span>${isTable ? 'Обслуживание за столом' : 'Доставка'}</span><span class="val ${order.delivery===0?'free-tag':''}">${order.delivery===0?'Бесплатно':fmt(order.delivery)}</span></div>
@@ -1007,7 +1023,7 @@ function scrStatusRejected(order){
 
   <section class="section">
     <div class="card">
-      <h3 class="h2">Что с деньгами</h3>
+      <h2 class="h2">Что с деньгами</h2>
       <p class="soft small" style="margin-top:8px">${cancelled
         ? 'Оплата не списывалась. Если средства заблокированы, они разблокируются автоматически в течение 1–3 рабочих дней.'
         : 'Оплата не списывалась. Если средства заблокированы, они разблокируются автоматически в течение 1–3 рабочих дней.'}</p>
@@ -1018,7 +1034,7 @@ function scrStatusRejected(order){
 
   <section class="section">
     <div class="card">
-      <h3 class="h2">Состав заказа</h3>
+      <h2 class="h2">Состав заказа</h2>
       <div style="margin-top:10px">
         ${order.items.map(i => `<div class="sum-row"><span>${i.name} × ${i.qty}</span><span class="val">${fmt(i.price*i.qty)}</span></div>`).join('')}
         <div class="sum-row is-total"><span class="lbl">Итого</span><span class="val">${fmt(order.total)}</span></div>
@@ -1092,7 +1108,7 @@ function scrProfile(){
   <section class="section">
     <div class="card">
       <div class="row between">
-        <h3 class="h2">Бонусы «Васаби»</h3>
+        <h2 class="h2">Бонусы «Васаби»</h2>
         <span style="color:var(--lime)">${icon('gift')}</span>
       </div>
       <p class="muted small" style="margin-top:4px">Программа лояльности iiko</p>
@@ -1108,7 +1124,7 @@ function scrProfile(){
     <div class="card">
       <div class="row between">
         <div>
-          <h3 class="h2">История заказов</h3>
+          <h2 class="h2">История заказов</h2>
           <p class="muted small" style="margin-top:4px">${state.orders.length} в истории (до 200 последних) · Cloud</p>
         </div>
         <span style="color:var(--lime)">${icon('receipt')}</span>
@@ -1120,7 +1136,7 @@ function scrProfile(){
     <div class="card">
       <div class="row between">
         <div>
-          <h3 class="h2">Избранное</h3>
+          <h2 class="h2">Избранное</h2>
           <p class="muted small" style="margin-top:4px">${state.favorites.length} ${plural(state.favorites.length,'блюдо','блюда','блюд')} · повторный заказ в один тап</p>
         </div>
         <span style="color:var(--lime)">${icon('heart')}</span>
@@ -1129,28 +1145,31 @@ function scrProfile(){
     </div>
   </section>
   <section class="section">
-    <h3 class="h2" style="margin-bottom:14px">Адресная книга</h3>
+    <h2 class="h2" style="margin-bottom:14px">Адресная книга</h2>
     ${addressBook()}
   </section>
   <section class="section">
-    <h3 class="h2" style="margin-bottom:14px">Контакты для доставки</h3>
+    <h2 class="h2" style="margin-bottom:14px">Контакты для доставки</h2>
     <div class="field">
       <label for="pName">Имя</label>
-      <input id="pName" data-act="f" data-field="name" value="${state.user.name}">
+      <input id="pName" data-act="f" data-field="name" value="${state.user.name}"
+        autocomplete="given-name" autocapitalize="words" enterkeyhint="next">
     </div>
     <div class="field">
       <label for="pPhone">Телефон (без подтверждения)</label>
-      <input id="pPhone" data-act="f" data-field="phone" value="${state.user.phone}">
+      <input id="pPhone" data-act="f" data-field="phone" value="${state.user.phone}"
+        type="tel" autocomplete="tel" inputmode="tel" enterkeyhint="next">
       <p class="hint">Номер используется только как контакт, не для входа.</p>
     </div>
     <div class="field">
       <label for="pAddr">Адрес доставки по умолчанию</label>
-      <textarea id="pAddr" data-act="f" data-field="address">${state.user.address}</textarea>
+      <textarea id="pAddr" data-act="f" data-field="address" autocomplete="street-address"
+        autocapitalize="words" enterkeyhint="done">${state.user.address}</textarea>
     </div>
     <button class="btn-lime" data-act="save-contacts"><span>Сохранить контакты</span>${icon('arrowRight')}</button>
   </section>
   <section class="section">
-    <h3 class="h2" style="margin-bottom:12px">Доступ сотрудника</h3>
+    <h2 class="h2" style="margin-bottom:12px">Доступ сотрудника</h2>
     <div class="card">
       <p class="small soft">Войти в панель ресторана, чтобы принимать заказы, управлять меню и бонусами.</p>
       <button class="btn-outline" style="margin-top:14px" data-act="mode" data-mode="admin">Открыть админ-панель</button>
@@ -1180,14 +1199,14 @@ function scrPromos(){
         <img src="${b.img}" alt="">
         <div class="promo-full-body">
           <span class="promo-tag promo-tag-in">${b.tag}</span>
-          <h3 class="h2">${b.title}</h3>
+          <h2 class="h2">${b.title}</h2>
           <p class="muted small" style="margin-top:6px">${b.sub}</p>
-          <span class="promo-cta">${b.cta}${icon('arrowRight')}</span>
+          <button class="promo-cta" type="button" data-act="open-banner" data-banner="${b.id}">${b.cta}${icon('arrowRight')}</button>
         </div>
       </div>
     </section>`).join('')}
   <section class="section">
-    <h3 class="h2" style="margin-bottom:12px">Промокоды</h3>
+    <h2 class="h2" style="margin-bottom:12px">Промокоды</h2>
     ${promos.map(p => `
       <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px">
         <div class="pay-icon">${icon('tag')}</div>
@@ -1228,7 +1247,7 @@ function scrRestaurant(){
   <section class="section">
     <div class="card" style="text-align:center">
       <div class="pay-icon" style="margin:0 auto 12px">${icon('qr')}</div>
-      <h3 class="h2">QR-меню в зале</h3>
+      <h2 class="h2">QR-меню в зале</h2>
       <p class="muted small" style="margin-top:6px">Отдельный канал заказа с QR-кода на столе: без регистрации и скидка 5% на бонусный счёт.</p>
       <button class="btn-outline" style="margin-top:14px" data-act="open-qr-menu"><span>Открыть QR-меню</span>${icon('arrowRight')}</button>
     </div>
@@ -1261,13 +1280,13 @@ function scrQrMenu(){
     </div>
   </section>
   <section class="section" style="margin-bottom:0">
-    <div class="chips">
+    <div class="chips" role="group" aria-label="Категории меню в зале">
       ${CATEGORIES.map(c => `<button class="chip ${state.qrCat===c.id?'is-active':''}" data-act="qr-cat" data-cat="${c.id}">${c.name}</button>`).join('')}
     </div>
   </section>
   <section class="section" style="margin-top:18px">
     <div class="section-head">
-      <h3 class="h2">${state.qrCat==='all'?'Всё меню':CATEGORIES.find(c=>c.id===state.qrCat).name}</h3>
+      <h2 class="h2">${state.qrCat==='all'?'Всё меню':CATEGORIES.find(c=>c.id===state.qrCat).name}</h2>
       <span class="count">${list.length} ${plural(list.length,'блюдо','блюда','блюд')}</span>
     </div>
     ${list.length ? `<div class="dish-grid">${list.map(d => dishCard(d)).join('')}</div>`
@@ -1292,7 +1311,8 @@ function scrOnboarding(){
     <section class="section" style="margin-top:26px">
       <div class="field">
         <label for="authPhone">Номер телефона</label>
-        <input id="authPhone" type="tel" placeholder="+7 900 000-00-00" value="${state.user.phone}">
+        <input id="authPhone" type="tel" placeholder="+7 900 000-00-00" value="${state.user.phone}"
+          autocomplete="tel" inputmode="tel" enterkeyhint="next">
       </div>
       <button class="btn-lime" data-act="auth-phone"><span>Получить код</span>${icon('arrowRight')}</button>
     </section>
@@ -1311,7 +1331,7 @@ function scrOnboarding(){
   </section>
   <section class="section">
     <div class="code-input">
-      <input maxlength="1" value="1" aria-label="Цифра 1"><input maxlength="1" value="2" aria-label="Цифра 2"><input maxlength="1" value="3" aria-label="Цифра 3"><input maxlength="1" value="4" aria-label="Цифра 4">
+      <input maxlength="1" value="1" inputmode="numeric" autocomplete="one-time-code" aria-label="Цифра 1"><input maxlength="1" value="2" inputmode="numeric" autocomplete="off" aria-label="Цифра 2"><input maxlength="1" value="3" inputmode="numeric" autocomplete="off" aria-label="Цифра 3"><input maxlength="1" value="4" inputmode="numeric" autocomplete="off" aria-label="Цифра 4">
     </div>
     <button class="btn-lime" style="margin-top:20px" data-act="auth-code"><span>Войти</span>${icon('arrowRight')}</button>
     <button class="btn-outline" style="margin-top:14px;width:100%" data-act="auth-resend">Отправить код ещё раз</button>
@@ -1322,6 +1342,37 @@ function scrOnboarding(){
 
 let statusTimer = null;
 let lastScreen = null;
+
+/* Перерисовка заменяет весь HTML экрана, и фокус теряется: запоминаем элемент
+   по его data-act (или id) и позиции, а потом возвращаем фокус на то же место.
+   Поля ввода не трогаем — иначе на телефоне снова всплывает клавиатура. */
+function captureFocus(){
+  const el = document.activeElement;
+  if (!el || el === document.body) return null;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return null;
+  const act = el.dataset && el.dataset.act;
+  const sel = act ? `[data-act="${act}"]` : (el.id ? '#' + el.id : null);
+  if (!sel) return null;
+  const i = [...document.querySelectorAll(sel)].indexOf(el);
+  return i < 0 ? null : {sel, i};
+}
+
+function restoreFocus(key){
+  if (!key) return;
+  const el = [...document.querySelectorAll(key.sel)][key.i];
+  if (el) el.focus({preventScroll:true});
+}
+window.restoreFocus = restoreFocus;
+window.captureFocus = captureFocus;
+
+/* после неудачной проверки фокус должен встать на первое проблемное поле:
+   без этого клавиатура и скринридер остаются в начале экрана, а ошибку не найти */
+function focusFirstError(){
+  const el = document.querySelector('#viewport [aria-invalid="true"]');
+  if (!el) return;
+  el.focus({preventScroll: true});
+  el.scrollIntoView({block: 'center'});
+}
 
 function render(){
   const vp = $('#viewport');
@@ -1338,17 +1389,24 @@ function render(){
   const keepScroll = lastScreen === scr ? vp.scrollTop : 0;
   const keepWinY = window.scrollY;
   const active = document.activeElement;
+  const fkey = captureFocus();
   if (active && active !== document.body && vp.contains(active)) active.blur();
 
   vp.innerHTML = (map[scr] || scrHome)();
   vp.scrollTop = keepScroll;
+  restoreFocus(fkey);
 
   // нижняя навигация
   const meta = SCREENS[scr] || SCREENS.home;
+  vp.setAttribute('role','region');
+  vp.setAttribute('aria-label', 'Экран: ' + meta.title);
   $('#tabbar').innerHTML = meta.tab ? TABS.map(t => {
     const badge = t.id === 'cart' ? cartCount() : 0;
-    return `<button class="tab ${meta.tab===t.id?'is-active':''}" data-act="tab" data-tab="${t.id}">
-      ${t.id==='cart' && badge ? `<span class="tab-badge">${badge}</span>` : ''}
+    const badgeLabel = t.id === 'cart' && badge ? ', в корзине ' + badge : '';
+    return `<button class="tab ${meta.tab===t.id?'is-active':''}" data-act="tab" data-tab="${t.id}"
+      aria-label="${t.label}${badgeLabel}"
+      ${meta.tab===t.id ? 'aria-current="page"' : ''}>
+      ${t.id==='cart' && badge ? `<span class="tab-badge" aria-hidden="true">${badge}</span>` : ''}
       ${icon(t.icon)}<span>${t.label}</span>
     </button>`;
   }).join('') : '';
@@ -1597,7 +1655,7 @@ const ACTIONS = {
   },
   'addr-add': () => {
     const v = (state.newAddress || '').trim();
-    if (!v){ state.errors.newAddress = 'Введите адрес'; render(); return; }
+    if (!v){ state.errors.newAddress = 'Введите адрес'; render(); focusFirstError(); return; }
     const id = 'a' + Date.now();
     state.addresses.push({ id, label:'Адрес ' + (state.addresses.length + 1), address:v });
     state.addressId = id;
@@ -1628,7 +1686,7 @@ const ACTIONS = {
     }
     if (!table && state.timeMode === 'slot' && !state.slot) errs.slot = 'Выберите время доставки';
     state.errors = errs;
-    if (Object.keys(errs).length){ render(); toast('Проверьте заполненные поля'); return; }
+    if (Object.keys(errs).length){ render(); focusFirstError(); toast('Проверьте заполненные поля'); return; }
     go('payment');
   },
   'apply-promo': () => {
@@ -1769,9 +1827,16 @@ document.addEventListener('input', ev => {
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.dataset && ev.target.dataset.act === 'search'){
     if (state.screen === 'home') go('catalog');
+    return;
   }
-  if (ev.key === 'Enter' && ev.target.classList && ev.target.classList.contains('pcard')){
-    go('product', { dishId: ev.target.dataset.dish });
+  /* нативные button/a/input сами превращают Enter и пробел в клик,
+     а самодельные кнопки (div со data-act) без этого недоступны с клавиатуры */
+  const el = ev.target.closest ? ev.target.closest('[data-act],[role=button]') : null;
+  if (!el || el !== ev.target) return;
+  if (/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+  if (ev.key === 'Enter' || ev.key === ' '){
+    ev.preventDefault();
+    el.click();
   }
 });
 

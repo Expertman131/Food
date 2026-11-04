@@ -58,6 +58,8 @@ let lastAdminSection = null;
 
 function renderAdmin(){
   const keepY = window.scrollY;
+  const fkey = window.captureFocus();
+  const ikey = captureAdminInput();
   renderAdminSide();
   const map = {
     orders: adminOrders, menu: adminMenu, qr: adminQr, marketing: adminMarketing,
@@ -66,12 +68,47 @@ function renderAdmin(){
   const sec = ADMIN_SECTIONS.find(s => s.id === admin.section);
   $('#adminTop').innerHTML = adminTop(sec.label, adminSub());
   $('#adminBody').innerHTML = (map[admin.section] || adminOrders)();
+  markScrollPanels();
+  window.restoreFocus(fkey);
+  restoreAdminInput(ikey);
   if (lastAdminSection === null || lastAdminSection === admin.section){
     if (window.scrollY !== keepY) window.scrollTo(0, keepY);
   } else {
     window.scrollTo(0, 0);
   }
   lastAdminSection = admin.section;
+}
+
+/* поле меняется по «change» и сразу перерисовывается: без возврата фокуса
+   клавиатура уезжает в начало страницы посреди набора значения */
+function captureAdminInput(){
+  /* на телефоне возврат фокуса в поле поднимает клавиатуру поверх кнопки,
+     поэтому фокус в полях восстанавливаем только на десктопе с мышью */
+  if (!window.matchMedia('(pointer: fine)').matches) return null;
+  const el = document.activeElement;
+  if (!el || !el.id || !el.closest || !el.closest('#adminBody')) return null;
+  if (!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return null;
+  return {id: el.id, start: el.selectionStart, end: el.selectionEnd};
+}
+
+function restoreAdminInput(key){
+  if (!key) return;
+  const el = document.getElementById(key.id);
+  if (!el) return;
+  el.focus({preventScroll: true});
+  try { if (el.setSelectionRange && key.start != null) el.setSelectionRange(key.start, key.end); } catch (e) {}
+}
+
+/* таблицу в панели можно прокрутить только мышью — даём ей фокус и имя,
+   чтобы к ней доехали с клавиатуры и озвучил скринридер */
+function markScrollPanels(){
+  document.querySelectorAll('#adminBody .a-panel').forEach(el => {
+    if (el.scrollWidth <= el.clientWidth + 2) return;
+    el.tabIndex = 0;
+    el.setAttribute('role', 'region');
+    const h = el.querySelector('h3');
+    el.setAttribute('aria-label', (h ? h.textContent.trim() + ' — ' : '') + 'прокручивается по горизонтали');
+  });
 }
 
 function adminSub(){
@@ -92,12 +129,13 @@ function renderAdminSide(){
       <span class="logo-mark" style="width:34px;height:34px;border-radius:11px">${icon('leaf')}</span>
       <span class="wordmark" style="font-size:19px">васаби<span class="dot">.</span></span>
     </div>
-    <div class="aside-nav">
+    <nav class="aside-nav" aria-label="Разделы панели">
       ${ADMIN_SECTIONS.map(s => `
-        <button class="${admin.section===s.id?'is-active':''}" data-act="admin-section" data-section="${s.id}">
+        <button class="${admin.section===s.id?'is-active':''}" data-act="admin-section" data-section="${s.id}"
+          ${admin.section===s.id ? 'aria-current="page"' : ''}>
           ${icon(s.icon)} ${s.label}
         </button>`).join('')}
-    </div>
+    </nav>
     <div class="aside-note">
       Демо-панель. Данные из iiko не подключены: меню и стоп-лист ведутся здесь вручную, заказы не попадают в кассу.
     </div>`;
@@ -143,9 +181,9 @@ function adminOrders(){
 
   return `
   <div class="a-tabs">
-    <button class="${admin.tab==='new'?'is-active':''}" data-act="admin-tab" data-tab="new">Новые · ${all.filter(o=>bucket(o)==='new').length}</button>
-    <button class="${admin.tab==='work'?'is-active':''}" data-act="admin-tab" data-tab="work">В работе · ${all.filter(o=>bucket(o)==='work').length}</button>
-    <button class="${admin.tab==='done'?'is-active':''}" data-act="admin-tab" data-tab="done">Завершённые · ${all.filter(o=>bucket(o)==='done').length}</button>
+    <button class="${admin.tab==='new'?'is-active':''}" data-act="admin-tab" data-tab="new" aria-pressed="${admin.tab==='new'}">Новые · ${all.filter(o=>bucket(o)==='new').length}</button>
+    <button class="${admin.tab==='work'?'is-active':''}" data-act="admin-tab" data-tab="work" aria-pressed="${admin.tab==='work'}">В работе · ${all.filter(o=>bucket(o)==='work').length}</button>
+    <button class="${admin.tab==='done'?'is-active':''}" data-act="admin-tab" data-tab="done" aria-pressed="${admin.tab==='done'}">Завершённые · ${all.filter(o=>bucket(o)==='done').length}</button>
     <button class="a-btn" style="margin-left:auto" data-act="admin-new-order">+ Создать тестовый заказ</button>
   </div>
 
@@ -202,7 +240,7 @@ function adminMenu(){
   <div class="a-panel">
     <h3>Блюда и цены</h3>
     <table class="a-table">
-      <thead><tr><th></th><th>Название</th><th>Категория</th><th>Вес</th><th>Цена</th><th>Статус</th><th></th></tr></thead>
+      <thead><tr><th scope="col"><span class="sr-only">Фото</span></th><th scope="col">Название</th><th scope="col">Категория</th><th scope="col">Вес</th><th scope="col">Цена</th><th scope="col">Статус</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${list.map(d => `
           <tr class="${dishAvailable(d)?'':'is-stopped'}">
@@ -214,7 +252,7 @@ function adminMenu(){
             <td><span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span></td>
             <td>
               <div class="a-row">
-                <button class="a-btn" data-act="admin-toast" data-msg="Карточка блюда открыта на редактирование">${icon('edit')}</button>
+                <button class="a-btn" aria-label="Редактировать «${d.name}»" data-act="admin-toast" data-msg="Карточка блюда «${d.name}» открыта на редактирование">${icon('edit')}</button>
                 <button class="a-btn ${dishAvailable(d)?'':'primary'}" data-act="admin-stoplist" data-id="${d.id}">${dishAvailable(d) ? 'Стоп-лист' : 'Вернуть в меню'}</button>
               </div>
             </td>
@@ -254,7 +292,7 @@ function adminMarketing(){
     <div class="a-panel">
       <h3>Промокоды</h3>
       <table class="a-table">
-        <thead><tr><th>Код</th><th>Тип</th><th>Значение</th><th>Мин. сумма</th><th>Использований</th><th></th></tr></thead>
+        <thead><tr><th scope="col">Код</th><th scope="col">Тип</th><th scope="col">Значение</th><th scope="col">Мин. сумма</th><th scope="col">Использований</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
         <tbody>
           ${PROMOS.map(p => `
             <tr>
@@ -269,13 +307,13 @@ function adminMarketing(){
       </table>
       <h3 style="margin-top:20px">Новый промокод</h3>
       <div class="a-grid a-grid-3" style="gap:10px">
-        <input class="input-plain" data-act="admin-draft" data-field="code" placeholder="Код, напр. AUTUMN25" value="${admin.promoDraft.code}">
-        <select class="input-plain" data-act="admin-draft" data-field="type">
+        <input class="input-plain" aria-label="Код промокода" data-act="admin-draft" data-field="code" placeholder="Код, напр. AUTUMN25" value="${admin.promoDraft.code}">
+        <select class="input-plain" aria-label="Тип скидки" data-act="admin-draft" data-field="type">
           <option value="percent" ${admin.promoDraft.type==='percent'?'selected':''}>Процент</option>
           <option value="fixed" ${admin.promoDraft.type==='fixed'?'selected':''}>Фиксированная сумма</option>
           <option value="delivery" ${admin.promoDraft.type==='delivery'?'selected':''}>Бесплатная доставка</option>
         </select>
-        <input class="input-plain" type="number" data-act="admin-draft" data-field="value" value="${admin.promoDraft.value}">
+        <input class="input-plain" type="number" min="1" aria-label="Размер скидки" inputmode="numeric" data-act="admin-draft" data-field="value" value="${admin.promoDraft.value}">
       </div>
       <button class="a-btn primary" style="margin-top:12px" data-act="admin-promo-create">Создать промокод</button>
     </div>
@@ -324,7 +362,7 @@ function adminClients(){
   <div class="a-panel">
     <h3>Гости</h3>
     <table class="a-table">
-      <thead><tr><th>Имя</th><th>Телефон</th><th>Заказов</th><th>Сумма</th><th>Бонусы</th><th>Сегмент</th><th>Последний</th><th></th></tr></thead>
+      <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Последний</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${ADMIN_CLIENTS.map(c => `
           <tr>
@@ -390,7 +428,7 @@ function adminAnalytics(){
       </div>
     </div>
     <table class="a-table" style="margin-top:12px">
-      <thead><tr><th>Период</th><th>Заказов</th><th>Выручка</th><th>Средний чек</th><th>Доставка</th></tr></thead>
+      <thead><tr><th scope="col">Период</th><th scope="col">Заказов</th><th scope="col">Выручка</th><th scope="col">Средний чек</th><th scope="col">Доставка</th></tr></thead>
       <tbody>
         ${[['20–26 октября',556,'684 300 ₽','1 231 ₽','72%'],
            ['13–19 октября',487,'601 900 ₽','1 236 ₽','70%'],
@@ -409,12 +447,16 @@ function adminSettings(){
   <div class="a-grid a-grid-2">
     <div class="a-panel">
       <h3>Доставка и заказы</h3>
-      <div class="field"><label>Стоимость доставки, ₽</label><input class="input-plain" data-act="admin-setting" data-key="deliveryPrice" value="${s.deliveryPrice}"></div>
-      <div class="field"><label>Бесплатная доставка от, ₽</label><input class="input-plain" data-act="admin-setting" data-key="freeFrom" value="${s.freeFrom}"></div>
-      <div class="field"><label>Минимальная сумма заказа, ₽</label><input class="input-plain" data-act="admin-setting" data-key="minOrder" value="${s.minOrder}"></div>
-      <div class="field"><label>Время приготовления</label><input class="input-plain" data-act="admin-setting" data-key="prepTime" value="${s.prepTime}"></div>
-      <label class="switch-row"><span>Автоподтверждение заказов</span><button class="opt-toggle ${s.autoAccept?'is-on':''}" data-act="admin-toggle" data-key="autoAccept"></button></label>
-      <label class="switch-row"><span>Звук нового заказа</span><button class="opt-toggle ${s.sound?'is-on':''}" data-act="admin-toggle" data-key="sound"></button></label>
+      <div class="field"><label for="set-deliveryPrice">Стоимость доставки, ₽</label><input class="input-plain" id="set-deliveryPrice" inputmode="numeric" data-act="admin-setting" data-key="deliveryPrice" value="${s.deliveryPrice}"></div>
+      <div class="field"><label for="set-freeFrom">Бесплатная доставка от, ₽</label><input class="input-plain" id="set-freeFrom" inputmode="numeric" data-act="admin-setting" data-key="freeFrom" value="${s.freeFrom}"></div>
+      <div class="field"><label for="set-minOrder">Минимальная сумма заказа, ₽</label><input class="input-plain" id="set-minOrder" inputmode="numeric" data-act="admin-setting" data-key="minOrder" value="${s.minOrder}"></div>
+      <div class="field"><label for="set-prepTime">Время приготовления</label><input class="input-plain" id="set-prepTime" data-act="admin-setting" data-key="prepTime" value="${s.prepTime}"></div>
+      <button class="switch-row" role="switch" aria-checked="${!!s.autoAccept}" data-act="admin-toggle" data-key="autoAccept">
+        <span>Автоподтверждение заказов</span><span class="opt-toggle ${s.autoAccept?'is-on':''}" aria-hidden="true"></span>
+      </button>
+      <button class="switch-row" role="switch" aria-checked="${!!s.sound}" data-act="admin-toggle" data-key="sound">
+        <span>Звук нового заказа</span><span class="opt-toggle ${s.sound?'is-on':''}" aria-hidden="true"></span>
+      </button>
       <button class="a-btn primary" style="margin-top:8px" data-act="admin-save">Сохранить</button>
     </div>
 
@@ -464,24 +506,24 @@ function adminQr(){
     <div class="a-panel">
       <h3>Параметры листов</h3>
       <div class="field">
-        <label>Точка ресторана</label>
-        <select class="input-plain" data-act="admin-qr-field" data-key="locId">
+        <label for="qr-locId">Точка ресторана</label>
+        <select class="input-plain" id="qr-locId" data-act="admin-qr-field" data-key="locId">
           ${LOCATIONS.map(l => `<option value="${l.id}" ${l.id===q.locId?'selected':''}>${l.name}</option>`).join('')}
         </select>
       </div>
       <div class="a-grid a-grid-2">
-        <div class="field"><label>Столы с</label><input class="input-plain" type="number" min="1" max="60" data-act="admin-qr-field" data-key="from" value="${q.from}"></div>
-        <div class="field"><label>по</label><input class="input-plain" type="number" min="1" max="60" data-act="admin-qr-field" data-key="to" value="${q.to}"></div>
+        <div class="field"><label for="qr-from">Столы с</label><input class="input-plain" id="qr-from" type="number" min="1" max="60" inputmode="numeric" data-act="admin-qr-field" data-key="from" value="${q.from}"></div>
+        <div class="field"><label for="qr-to">по</label><input class="input-plain" id="qr-to" type="number" min="1" max="60" inputmode="numeric" data-act="admin-qr-field" data-key="to" value="${q.to}"></div>
       </div>
       <div class="field">
-        <label>Защита кода от повреждений</label>
-        <select class="input-plain" data-act="admin-qr-field" data-key="ec">
+        <label for="qr-ec">Защита кода от повреждений</label>
+        <select class="input-plain" id="qr-ec" data-act="admin-qr-field" data-key="ec">
           <option value="L" ${q.ec==='L'?'selected':''}>L — максимум данных, нужен чистый печать</option>
           <option value="M" ${q.ec==='M'?'selected':''}>M — стандарт: читается с потёртостью и пятнами</option>
         </select>
       </div>
       <div class="field">
-        <label>Ссылка, которую открывает камера</label>
+        <span class="field-caption">Ссылка, которую открывает камера</span>
         <div class="qr-url">
           <code>${url}</code>
           <button class="a-btn" data-act="admin-qr-copy" data-url="${url}">${icon('doc')} Копировать</button>
@@ -511,7 +553,7 @@ function adminQr(){
       <button class="a-btn" data-act="admin-qr-print" data-loc="${loc.id}" data-count="${tables.length}">${icon('printer')} Печать всех листов</button>
     </div>
     <table class="a-table">
-      <thead><tr><th>Стол</th><th>QR</th><th>Адрес меню</th><th></th></tr></thead>
+      <thead><tr><th scope="col">Стол</th><th scope="col">QR</th><th scope="col">Адрес меню</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${tables.map(no => {
           const u = menuUrl(no, loc.id);
