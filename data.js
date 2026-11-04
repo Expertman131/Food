@@ -152,11 +152,57 @@ const RULES = {
 };
 
 const PROMOS = [
-  { code: 'WASABI10', type: 'percent', value: 10, label: '−10% на заказ', min: 0 },
-  { code: 'SETHI',    type: 'fixed',   value: 200, label: '−200 ₽', min: 1000 },
-  { code: 'DOSTAVKA', type: 'delivery',value: 0,  label: 'Бесплатная доставка', min: 0 },
-  { code: 'VASABI',   type: 'percent', value: 15, label: '−15% только в приложении', min: 500, appOnly: true }
+  { code: 'WASABI10', type: 'percent', value: 10, label: '−10% на заказ', min: 0, active: true },
+  { code: 'SETHI',    type: 'fixed',   value: 200, label: '−200 ₽', min: 1000, active: true },
+  { code: 'DOSTAVKA', type: 'delivery',value: 0,  label: 'Бесплатная доставка', min: 0, active: true },
+  { code: 'VASABI',   type: 'percent', value: 15, label: '−15% только в приложении', min: 500, appOnly: true, active: true }
 ];
+
+/* Акции главной: один список на карусель гостя, экран «Акции» и переключатели админки.
+   kind решает, что делает тап: dish — открыть блюдо, promo — применить код,
+   screen — перейти на экран. active выключает акцию у гостя без правки кода,
+   порядок в списке = порядок карточек в карусели. */
+const BANNERS = [
+  {
+    id: 'b-app15', kind: 'promo', code: 'VASABI', active: true,
+    tag: '−15%', img: 'assets/sashimi.jpg',
+    title: 'Скидка 15% только в приложении.',
+    sub: 'Промокод VASABI · от 500 ₽', cta: 'Применить код'
+  },
+  {
+    id: 'b-delivery', kind: 'promo', code: 'DOSTAVKA', active: true,
+    tag: 'Доставка 0 ₽', img: 'assets/california.jpg',
+    title: 'Бесплатная доставка от 1 500 ₽.',
+    sub: 'В пределах 3 км от ресторана', cta: 'Применить код'
+  },
+  {
+    id: 'b-set200', kind: 'promo', code: 'SETHI', active: true,
+    tag: '−200 ₽', img: 'assets/sushi-boat.jpg',
+    title: 'Минус 200 ₽ на большой заказ.',
+    sub: 'Промокод SETHI · от 1 000 ₽', cta: 'Применить код'
+  },
+  {
+    id: 'b-tempura', kind: 'dish', dish: 'd-temp', active: true,
+    tag: 'Горячее', img: 'assets/tempura.jpg',
+    title: 'Темпура с лососем — со скидкой к обеду.',
+    sub: '6 шт. · 690 ₽ · готовим после заказа', cta: 'Открыть блюдо'
+  },
+  {
+    id: 'b-bonus', kind: 'screen', screen: 'profile', active: true,
+    tag: 'Бонусы', img: 'assets/cheesecake.jpg',
+    title: 'Бонус 5% за каждый заказ.',
+    sub: 'Баллы iiko: баланс придёт с подключением кассы', cta: 'Где мои баллы'
+  },
+  {
+    id: 'b-lunch', kind: 'dish', dish: 'd-phil', active: false,
+    tag: 'Обед', img: 'assets/philadelphia.jpg',
+    title: 'Обед в подарок.',
+    sub: '«Филадельфия» к сету при заказе после 12:00', cta: 'Выбрать сет'
+  }
+];
+
+const activeBanners = () => BANNERS.filter(b => b.active);
+const activePromos = () => PROMOS.filter(p => p.active);
 
 /* Причины отказа ресторана — из них оператор выбирает в админ-панели */
 const REJECT_REASONS = [

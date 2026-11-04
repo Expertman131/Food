@@ -204,7 +204,7 @@ function totals(){
   const noDelivery = state.deliveryType === 'pickup' || state.deliveryType === 'table';
   let delivery = noDelivery ? 0 : (sub >= RULES.freeDeliveryFrom ? 0 : RULES.deliveryPrice);
   let discount = 0;
-  const promo = PROMOS.find(p => p.code === state.promo);
+  const promo = PROMOS.find(p => p.code === state.promo && p.active && sub >= p.min);
   if (promo){
     if (promo.type === 'percent') discount = Math.round(sub * promo.value / 100);
     if (promo.type === 'fixed' && sub >= promo.min) discount = promo.value;
@@ -353,6 +353,41 @@ function stepper(key, qty){
 
 /* --------------------------------- экраны -------------------------------- */
 
+/* Карусель акций на главной: лента строится из BANNERS, поэтому выключенная
+   в админке акция исчезает отсюда сразу, без правки кода */
+function promoRail(){
+  const list = activeBanners();
+  if (!list.length) return '';
+  const slides = list.length + 1; // + плитка «Все акции»
+  return `
+  <section class="section">
+    <div class="section-head">
+      <h3 class="h2">Акции сегодня</h3>
+      <div class="rail-tools">
+        <button class="rail-btn" data-act="promo-prev" aria-label="Предыдущая акция">${icon('arrowLeft')}</button>
+        <button class="rail-btn" data-act="promo-next" aria-label="Следующая акция">${icon('arrowRight')}</button>
+      </div>
+    </div>
+    <div class="promo-rail" id="promoRail">
+      ${list.map(b => `
+        <button class="promo-card" data-act="open-banner" data-banner="${b.id}">
+          <span class="promo-img"><img src="${b.img}" alt=""><span class="promo-tag">${b.tag}</span></span>
+          <span class="promo-title">${b.title}</span>
+          <span class="promo-sub">${b.sub}</span>
+          <span class="promo-cta">${b.cta}${icon('arrowRight')}</span>
+        </button>`).join('')}
+      <button class="promo-card promo-more" data-act="go" data-screen="promos">
+        <span class="promo-more-in">
+          ${icon('tag')}
+          <span>Все акции<br><b>${slides - 1} активных</b></span>
+          ${icon('arrowRight')}
+        </span>
+      </button>
+    </div>
+    ${slides > 1 ? `<div class="promo-dots" id="promoDots">${Array.from({length:slides}, (_,i) => `<i class="${i?'':'is-on'}"></i>`).join('')}</div>` : ''}
+  </section>`;
+}
+
 function scrHome(){
   const set = dishById('d-set-w');
   const popular = DISHES.filter(d => d.popular);
@@ -374,6 +409,8 @@ function scrHome(){
       <div class="hero-note">${set.unit.replace(' · ',' / ')}</div>
     </div>
   </section>
+
+  ${promoRail()}
 
   ${last ? `
   <section class="section" style="padding-top:0">
@@ -425,13 +462,15 @@ function scrCatalog(){
     <h2 class="h1">Наше меню</h2>
     <div class="muted small" style="margin-top:6px">Вкус, к которому возвращаются</div>
   </section>
-  <div class="search">
-    ${icon('search')}
-    <input type="search" placeholder="Найти любимые роллы" value="${state.query}" data-act="search">
-  </div>
-  <div class="chips">
-    ${CATEGORIES.map(c => `<button class="chip ${state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
-  </div>
+  <section class="section" style="margin-bottom:0">
+    <div class="search">
+      ${icon('search')}
+      <input type="search" placeholder="Найти любимые роллы" value="${state.query}" data-act="search">
+    </div>
+    <div class="chips">
+      ${CATEGORIES.map(c => `<button class="chip ${state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+    </div>
+  </section>
   <section class="section" style="margin-top:20px">
     <div class="section-head">
       <h3 class="h2">${state.cat==='all'?'Все блюда':CATEGORIES.find(c=>c.id===state.cat).name}</h3>
@@ -852,7 +891,7 @@ function scrPayment(){
       <button class="btn-outline" data-act="apply-promo">Применить</button>
     </div>
     ${state.promoMsg ? `<p class="${promoOk?'ok':'err'}">${state.promoMsg}</p>` : ''}
-    <p class="muted small" style="margin-top:10px">Действующие: WASABI10 (−10%), SETHI (−200 ₽ от 1000 ₽), DOSTAVKA (бесплатная доставка), VASABI (−15% только в приложении от 500 ₽).</p>
+    <p class="muted small" style="margin-top:10px">Действующие: ${activePromos().map(p => `${p.code} (${p.label}${p.min ? ', от ' + fmt(p.min) : ''})`).join(', ')}.</p>
   </section>
 
   <section class="section">
@@ -1126,29 +1165,30 @@ function scrProfile(){
 }
 
 function scrPromos(){
+  const banners = activeBanners();
+  const promos = activePromos();
   return `
   ${appBar('Акции и новости')}
   <section class="section">
     <div class="eyebrow">ВАСАБИ / АКЦИИ</div>
     <h1 class="h1" style="margin-top:10px">Свежие поводы заказать</h1>
+    <div class="muted small" style="margin-top:6px">${banners.length} ${plural(banners.length,'акция','акции','акций')} · ${promos.length} ${plural(promos.length,'промокод','промокода','промокодов')}</div>
   </section>
-  ${[
-    { t:'Бонус 5% за каждый заказ', d:'Начисляем баллы программы лояльности iiko. Баланс станет виден после подключения кассы.', img:'assets/cheesecake.jpg' },
-    { t:'Бесплатная доставка от 1 500 ₽', d:'При заказе от 1 500 ₽ доставляем за наш счёт в пределах 3 км от ресторана.', img:'assets/sushi-boat.jpg' },
-    { t:'Обед в подарок', d:'При заказе после 12:00 — ролл «Филадельфия» в подарок к сету.', img:'assets/philadelphia.jpg' }
-  ].map(p => `
+  ${banners.map(b => `
     <section class="section">
-      <div class="card" style="padding:0;overflow:hidden">
-        <img src="${p.img}" alt="" style="width:100%;aspect-ratio:16/8;object-fit:cover;display:block">
-        <div style="padding:16px">
-          <h3 class="h2">${p.t}</h3>
-          <p class="muted small" style="margin-top:6px">${p.d}</p>
+      <div class="card promo-full" data-act="open-banner" data-banner="${b.id}">
+        <img src="${b.img}" alt="">
+        <div class="promo-full-body">
+          <span class="promo-tag promo-tag-in">${b.tag}</span>
+          <h3 class="h2">${b.title}</h3>
+          <p class="muted small" style="margin-top:6px">${b.sub}</p>
+          <span class="promo-cta">${b.cta}${icon('arrowRight')}</span>
         </div>
       </div>
     </section>`).join('')}
   <section class="section">
     <h3 class="h2" style="margin-bottom:12px">Промокоды</h3>
-    ${PROMOS.map(p => `
+    ${promos.map(p => `
       <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px">
         <div class="pay-icon">${icon('tag')}</div>
         <div class="grow">
@@ -1220,9 +1260,11 @@ function scrQrMenu(){
       </div>
     </div>
   </section>
-  <div class="chips">
-    ${CATEGORIES.map(c => `<button class="chip ${state.qrCat===c.id?'is-active':''}" data-act="qr-cat" data-cat="${c.id}">${c.name}</button>`).join('')}
-  </div>
+  <section class="section" style="margin-bottom:0">
+    <div class="chips">
+      ${CATEGORIES.map(c => `<button class="chip ${state.qrCat===c.id?'is-active':''}" data-act="qr-cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+    </div>
+  </section>
   <section class="section" style="margin-top:18px">
     <div class="section-head">
       <h3 class="h2">${state.qrCat==='all'?'Всё меню':CATEGORIES.find(c=>c.id===state.qrCat).name}</h3>
@@ -1355,6 +1397,7 @@ const FEATURES = [
   'Оплата: карта, СБП, Apple Pay, наличные',
   'Статус заказа: таймлайн, отмена, экран отказа с возвратом',
   'Стоп-лист: блюдо пропадает из меню гостя сразу',
+  'Акции: карусель на главной, тап = промокод или блюдо, порядок и выключение в админке',
   'QR-меню на столе: отдельный экран, заказ к столу, печать листов из админ-панели',
   'Профиль, бонусы, контакты, адреса, доступ сотрудника'
 ];
@@ -1389,6 +1432,40 @@ function toast(msg){
 }
 
 /* ------------------------------- действия -------------------------------- */
+
+/* Тап по карточке акции с промокодом и кнопка «Применить» на экране акций делают одно */
+function applyPromoCode(code){
+  const p = PROMOS.find(x => x.code === code);
+  if (!p || !p.active){ toast('Промокод ' + code + ' отключён'); return; }
+  state.promoInput = p.code;
+  if (cartSubtotal() < p.min){
+    state.promo = null;
+    state.promoMsg = `Промокод ${p.code} действует от ${fmt(p.min)}`;
+  } else {
+    state.promo = p.code;
+    state.promoMsg = `Промокод ${p.code} применён`;
+  }
+  toast(state.promoMsg);
+  go('cart');
+}
+
+/* Точки карусели = левая видимая карточка: свайп, стрелки и колёсико дают один и тот же отклик */
+function syncPromoDots(rail){
+  const dots = $('#promoDots');
+  if (!dots) return;
+  const x = rail.getBoundingClientRect().left;
+  let i = 0;
+  [...rail.children].forEach((el, idx) => { if (el.getBoundingClientRect().left - x <= 2) i = idx; });
+  [...dots.children].forEach((d, idx) => d.classList.toggle('is-on', idx === i));
+}
+
+function scrollRail(dir){
+  const rail = $('#promoRail');
+  if (!rail || rail.children.length < 2) return;
+  const step = rail.children[0].offsetWidth + (parseFloat(getComputedStyle(rail).columnGap) || 0);
+  const max = rail.scrollWidth - rail.clientWidth;
+  rail.scrollTo({ left: Math.max(0, Math.min(max, rail.scrollLeft + dir * step)), behavior:'smooth' });
+}
 
 const ACTIONS = {
   back: () => back(),
@@ -1558,17 +1635,21 @@ const ACTIONS = {
     const code = (state.promoInput || '').trim().toUpperCase();
     const p = PROMOS.find(x => x.code === code);
     if (!p){ state.promoMsg = 'Промокод не найден'; state.promo = null; }
-    else if (p.type === 'fixed' && cartSubtotal() < p.min){ state.promoMsg = `Промокод действует от ${fmt(p.min)}`; state.promo = null; }
+    else if (!p.active){ state.promoMsg = 'Промокод отключён рестораном'; state.promo = null; }
+    else if (cartSubtotal() < p.min){ state.promoMsg = `Промокод действует от ${fmt(p.min)}`; state.promo = null; }
     else { state.promo = p.code; state.promoMsg = `Промокод ${p.code} применён`; }
     render();
   },
-  'copy-promo': (el) => {
-    state.promo = el.dataset.code;
-    state.promoInput = el.dataset.code;
-    state.promoMsg = `Промокод ${el.dataset.code} применён`;
-    toast('Промокод применён');
-    go('cart');
+  'copy-promo': (el) => applyPromoCode(el.dataset.code),
+  'open-banner': (el) => {
+    const b = BANNERS.find(x => x.id === el.dataset.banner);
+    if (!b) return;
+    if (b.kind === 'promo') applyPromoCode(b.code);
+    else if (b.kind === 'dish') go('product', { dishId: b.dish });
+    else go(b.screen, { top:true });
   },
+  'promo-prev': () => scrollRail(-1),
+  'promo-next': () => scrollRail(1),
   pay: () => {
     if (state.paying) return;
     state.paying = true;
@@ -1668,6 +1749,11 @@ document.addEventListener('click', ev => {
   if (ACTIONS[act]){ ev.preventDefault(); ACTIONS[act](el); }
 });
 
+/* scroll не всплывает, поэтому слушатель висит на document в фазе перехвата */
+document.addEventListener('scroll', ev => {
+  if (ev.target && ev.target.id === 'promoRail') syncPromoDots(ev.target);
+}, true);
+
 document.addEventListener('input', ev => {
   const el = ev.target;
   if (el.dataset && el.dataset.act === 'search'){
@@ -1742,11 +1828,13 @@ function fitDevice(){
   const w = d.offsetWidth, h = d.offsetHeight;
   if (!w || !h) return;   // клиентская сцена сейчас скрыта (админка) — масштаба не считаем
   const out = $('#sizeReadout');
-  const r = d.getBoundingClientRect();
+  /* размеры экрана приложения, а не рамки: корпус в 10 px по краям в счёт не идёт */
+  const s = $('.device-screen');
+  const size = s ? s.offsetWidth + ' × ' + s.offsetHeight : '—';
   if (bare){
     document.body.style.setProperty('--fit-scale', '1');
     document.body.dataset.deviceFits = 'yes';
-    if (out) out.textContent = Math.round(r.width) + ' × ' + Math.round(r.height) + ' · весь экран';
+    if (out) out.textContent = size + ' · весь экран';
     return;
   }
   const bar = parseInt(getComputedStyle(document.body).getPropertyValue('--topbar-h'), 10) || 67;
@@ -1757,10 +1845,8 @@ function fitDevice(){
   document.body.style.setProperty('--fit-scale', scale.toFixed(4));
   const scrolls = h * scale > innerHeight - bar - 24;
   document.body.dataset.deviceFits = scrolls ? 'no' : 'yes';
-  /* размеры в CSS-пикселях: видимый прямоугольник делим на масштаб — иначе цифры отстают на шаг */
   if (out) {
-    out.textContent = Math.round(r.width / scale) + ' × ' + Math.round(r.height / scale)
-      + (scale < .995 ? ' · ' + Math.round(scale * 100) + '% окна' : '')
+    out.textContent = size + (scale < .995 ? ' · ' + Math.round(scale * 100) + '% окна' : '')
       + (scrolls ? ' · низ экрана ниже, листать' : '');
   }
 }
@@ -1786,9 +1872,9 @@ if (sizeSelect){
   sizeSelect.addEventListener('change', () => {
     const mode = sizeSelect.value;
     if (mode === 'custom'){
-      const d = $('.device');
-      $('#sizeW').value = d.offsetWidth;
-      $('#sizeH').value = d.offsetHeight;
+      const s = $('.device-screen');
+      $('#sizeW').value = s.offsetWidth;
+      $('#sizeH').value = s.offsetHeight;
     }
     applyDeviceSize(mode);
   });

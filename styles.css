@@ -19,9 +19,12 @@
   --line-soft:rgba(255,255,255,.07);
   --danger:#F2856B;
   --font:"Inter","SF Pro Display",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  /* 16 px — поля по краям экрана: 20 съедали слишком много ширины у двух колонок карточек */
+  --pad:16px;
   --device-w:393px;
   --device-h:852px;
   --device-r:52px;
+  --device-pad:10px;
   /* реальную высоту шапки подставляет JS: от неё считаются прилипание и высота телефона */
   --topbar-h:67px;
 }
@@ -106,10 +109,12 @@ body[data-mode="admin"] .tb-size{display:none;}
   position:sticky;top:calc(var(--topbar-h) + 18px);
 }
 .device{
+  /* content-box: 393 × 852 — это размер экрана приложения, а не рамки вместе с корпусом */
+  box-sizing:content-box;
   width:var(--device-w);height:var(--device-h);flex:none;
   /* zoom, а не max-height: рамка остаётся своих пропорций и не расползается за окно */
   zoom:var(--fit-scale, 1);
-  border-radius:var(--device-r);padding:10px;
+  border-radius:var(--device-r);padding:var(--device-pad);
   background:linear-gradient(160deg,#2A3327,#12160F 45%,#232B20);
   box-shadow:0 40px 90px rgba(0,0,0,.62),0 0 0 1px rgba(255,255,255,.05) inset;
 }
@@ -219,7 +224,7 @@ body[data-mode="admin"] .tb-size{display:none;}
 .muted{color:var(--muted);}
 .soft{color:var(--soft);}
 .small{font-size:12.5px;}
-.section{padding:0 20px;margin-bottom:26px;}
+.section{padding:0 var(--pad);margin-bottom:26px;}
 .stack{display:flex;flex-direction:column;}
 .gap-6{gap:6px}.gap-10{gap:10px}.gap-14{gap:14px}.gap-18{gap:18px}
 .row{display:flex;align-items:center;}
@@ -263,7 +268,8 @@ body[data-mode="admin"] .tb-size{display:none;}
 .btn-outline:hover{color:var(--text);border-color:rgba(198,241,110,.4);}
 .btn-sm{width:100%;margin-top:12px;}
 
-.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 20px 4px;scrollbar-width:none;}
+/* поля по краям даёт только .section: собственный padding сложился бы с ним вдвое и съел ширину карточек */
+.chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none;}
 .chips::-webkit-scrollbar{display:none;}
 .chip{
   flex:none;border:0;cursor:pointer;
@@ -275,7 +281,7 @@ body[data-mode="admin"] .tb-size{display:none;}
 .search{
   display:flex;align-items:center;gap:10px;
   background:var(--surface);border:1px solid var(--line-soft);
-  border-radius:16px;padding:0 16px;height:52px;margin:0 20px 14px;
+  border-radius:16px;padding:0 16px;height:52px;margin-bottom:14px;
 }
 .search .ic{width:19px;height:19px;color:var(--muted);flex:none;}
 .search input{
@@ -285,7 +291,7 @@ body[data-mode="admin"] .tb-size{display:none;}
 .search input::placeholder{color:var(--muted);}
 
 /* ---------- сетка блюд ---------- */
-.dish-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 20px;}
+.dish-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .pcard{
   background:var(--surface);border-radius:20px;overflow:hidden;cursor:pointer;
   display:flex;flex-direction:column;text-align:left;border:0;padding:0;color:inherit;
@@ -312,16 +318,6 @@ body[data-mode="admin"] .tb-size{display:none;}
 
 .section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px;}
 .count{font-size:12.5px;color:var(--muted);}
-
-/* ---------- слайдер-подобная лента категорий ---------- */
-.cat-row{display:flex;gap:12px;overflow-x:auto;padding:0 20px 6px;scrollbar-width:none;}
-.cat-row::-webkit-scrollbar{display:none;}
-.cat-card{
-  flex:none;width:148px;border-radius:18px;overflow:hidden;cursor:pointer;
-  border:1px solid var(--line-soft);background:var(--surface);padding:0;text-align:left;
-}
-.cat-card img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;}
-.cat-card span{display:block;padding:10px 12px;font-size:13.5px;font-weight:600;}
 
 /* ---------- карточка товара ---------- */
 .pdp-hero{position:relative;margin:0 0 20px;}
@@ -716,6 +712,8 @@ body[data-mode="admin"] .tb-size{display:none;}
 .a-order-meta{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:5px;margin-bottom:14px;}
 .a-order-meta .row{display:flex;gap:8px;align-items:center;}
 .a-order-meta .ic{width:15px;height:15px;flex:none;}
+/* стрелки порядка карусели: 44 px, чтобы в них попадало пальцем на телефоне оператора */
+.a-btn[data-act^="admin-banner-move"]{min-width:44px;}
 .a-reject{
   width:100%;display:flex;flex-wrap:wrap;gap:8px;
   border-top:1px solid var(--line-soft);padding-top:12px;margin-top:4px;
@@ -744,6 +742,55 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .hero-cta .ic{width:18px;height:18px;}
 .hero-note{position:absolute;right:20px;bottom:22px;font-size:12px;color:var(--muted);}
+
+/* ---------- карусель акций на главной ---------- */
+.rail-tools{display:flex;gap:6px;align-self:center;}
+.rail-btn{
+  width:32px;height:32px;border-radius:50%;cursor:pointer;
+  border:1px solid var(--line-soft);background:var(--surface);color:var(--soft);
+  display:grid;place-items:center;
+}
+.rail-btn:hover{color:var(--text);background:var(--surface-2);}
+.rail-btn .ic{width:15px;height:15px;}
+.promo-rail{
+  display:flex;gap:10px;overflow-x:auto;
+  scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:2px;
+}
+.promo-rail::-webkit-scrollbar{display:none;}
+.promo-card{
+  /* 238 px: следующая карточка видна краем — это и есть подсказка, что ленту можно листать */
+  flex:none;width:238px;scroll-snap-align:start;display:flex;flex-direction:column;
+  text-align:left;cursor:pointer;color:var(--text);
+  background:var(--surface);border:1px solid var(--line-soft);border-radius:20px;padding:0;
+}
+.promo-img{position:relative;display:block;}
+.promo-card img{width:100%;aspect-ratio:16/8.6;object-fit:cover;display:block;border-radius:19px 19px 0 0;}
+.promo-tag{
+  position:absolute;top:10px;left:10px;
+  background:var(--lime);color:#0B1008;border-radius:999px;
+  padding:4px 11px;font-size:11px;font-weight:700;
+}
+.promo-title{display:block;font-size:15px;font-weight:700;line-height:1.25;letter-spacing:-.015em;padding:12px 14px 0;}
+.promo-sub{display:block;font-size:12px;color:var(--muted);line-height:1.45;padding:6px 14px 0;}
+.promo-cta{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-top:auto;padding:10px 14px 13px;font-size:13px;font-weight:700;color:var(--lime);
+}
+.promo-cta .ic{width:16px;height:16px;}
+.promo-more{background:transparent;border-style:dashed;}
+.promo-more-in{display:grid;place-items:center;gap:8px;min-height:100%;padding:22px 14px;color:var(--soft);font-size:13px;line-height:1.4;text-align:center;}
+.promo-more-in .ic{width:22px;height:22px;color:var(--lime);}
+.promo-more-in b{color:var(--text);}
+.promo-dots{display:flex;gap:6px;justify-content:center;margin-top:12px;}
+.promo-dots i{width:6px;height:6px;border-radius:999px;background:var(--line);transition:width .18s ease,background .18s ease;}
+.promo-dots i.is-on{width:20px;background:var(--lime);}
+
+/* крупные карточки на экране «Акции» */
+.promo-full{padding:0;overflow:hidden;cursor:pointer;}
+.promo-full>img{width:100%;aspect-ratio:16/8;object-fit:cover;display:block;}
+.promo-full-body{padding:15px 16px 16px;position:relative;}
+.promo-tag-in{position:static;display:inline-block;margin-bottom:10px;}
+.promo-full .promo-cta{padding:12px 0 0;}
 
 .feat-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .feat{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--soft);}
@@ -807,8 +854,9 @@ body[data-device="tablet"] { --device-w:768px;  --device-h:1024px; --device-r:34
 body[data-device="wide"]   { --device-w:1024px; --device-h:768px;  --device-r:28px; }
 body[data-device="custom"] { --device-w:var(--custom-w,393px); --device-h:var(--custom-h,852px); --device-r:32px; }
 body[data-device="full"]{
-  --device-w:min(100%,1180px);
-  --device-h:calc(100dvh - var(--topbar-h) - 52px);
+  /* корпус вокруг экрана отнимает 2 × --device-pad: без этой поправки рамка вылезла бы за колонку */
+  --device-w:min(calc(100% - var(--device-pad) * 2),1160px);
+  --device-h:calc(100dvh - var(--topbar-h) - 52px - var(--device-pad) * 2);
   --device-r:30px;
 }
 /* рамка в 90% выше окна: прилипание спрятало бы нижнюю навигацию, поэтому листаем страницу */
@@ -819,8 +867,8 @@ body[data-device-fits="no"] .device-wrap{position:static;}
 body[data-shell="bare"][data-mode="client"] .stage{padding:6px 0 24px;}
 body[data-shell="bare"][data-mode="client"] .client-stage{gap:18px;}
 body[data-shell="bare"][data-mode="client"] .device{
-  /* 6 px — верхний отступ сцены над шапкой: иначе рамка на несколько пикселей вылезает за экран */
-  width:100%;height:calc(100dvh - var(--topbar-h) - 6px);
+  /* 6 px — верхний отступ сцены: без поправки рамка на несколько пикселей вылезает за экран */
+  box-sizing:border-box;width:100%;height:calc(100dvh - var(--topbar-h) - 6px);
   padding:0;border-radius:0;background:var(--bg);box-shadow:none;zoom:1;
 }
 body[data-shell="bare"][data-mode="client"] .device-screen{border-radius:0;}

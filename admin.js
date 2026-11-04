@@ -49,6 +49,11 @@ const adminTop = (title, sub) => `
     <span class="a-pill olive">Оператор · Мария</span>
   </div>`;
 
+/* Что делает тап по карточке акции — так оператор видит, куда ведёт баннер */
+const bannerKind = b => b.kind === 'dish'
+  ? 'Открывает блюдо'
+  : (b.kind === 'promo' ? 'Промокод ' + b.code : 'Ведёт на экран «' + ((SCREENS[b.screen] || {}).title || b.screen) + '»');
+
 let lastAdminSection = null;
 
 function renderAdmin(){
@@ -253,12 +258,12 @@ function adminMarketing(){
         <tbody>
           ${PROMOS.map(p => `
             <tr>
-              <td><b>${p.code}</b></td>
+              <td><b>${p.code}</b>${p.active?'':'<div class="muted" style="font-size:11.5px">выключен</div>'}</td>
               <td class="muted">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная':'Доставка')}</td>
               <td>${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}</td>
               <td class="muted">${p.min?fmt(p.min):'—'}</td>
               <td class="muted">${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</td>
-              <td><button class="a-btn danger" data-act="admin-toast" data-msg="Промокод отключён">Отключить</button></td>
+              <td><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${p.code}">${p.active?'Отключить':'Включить'}</button></td>
             </tr>`).join('')}
         </tbody>
       </table>
@@ -276,23 +281,25 @@ function adminMarketing(){
     </div>
 
     <div class="a-panel">
-      <h3>Баннеры на главном экране</h3>
-      <div class="a-order" style="margin-bottom:10px">
-        <div style="font-weight:700">Хороший вечер начинается с роллов.</div>
-        <div class="muted" style="font-size:12.5px;margin-top:4px">Васаби сет · 1 690 ₽ · активен</div>
-        <div class="a-row" style="margin-top:10px">
-          <span class="a-pill lime">Показывается</span>
-          <button class="a-btn" data-act="admin-toast" data-msg="Баннер отключён">Выключить</button>
-        </div>
+      <h3>Карусель акций на главной</h3>
+      <div class="muted" style="font-size:12.5px;margin-bottom:12px">
+        ${BANNERS.filter(b => b.active).length} из ${BANNERS.length} показываются гостю. Порядок ниже = порядок карточек в ленте, изменения видны сразу.
       </div>
-      <div class="a-order">
-        <div style="font-weight:700">Бонус 5% за каждый заказ</div>
-        <div class="muted" style="font-size:12.5px;margin-top:4px">Активная программа лояльности · выключен</div>
-        <div class="a-row" style="margin-top:10px">
-          <span class="a-pill">Скрыт</span>
-          <button class="a-btn" data-act="admin-toast" data-msg="Баннер показан гостям">Показать</button>
-        </div>
-      </div>
+      ${BANNERS.map((b, i) => `
+        <div class="a-order" style="margin-bottom:10px">
+          <div class="row between" style="gap:10px">
+            <div style="font-weight:700">${b.title}</div>
+            <div class="row gap-6">
+              <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="-1" ${i===0?'disabled':''} aria-label="Выше">↑</button>
+              <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="1" ${i===BANNERS.length-1?'disabled':''} aria-label="Ниже">↓</button>
+            </div>
+          </div>
+          <div class="muted" style="font-size:12.5px;margin-top:4px">${bannerKind(b)} · ${b.sub}</div>
+          <div class="a-row" style="margin-top:10px">
+            <span class="a-pill ${b.active?'lime':''}">${b.active?'Показывается':'Скрыт'}</span>
+            <button class="a-btn" data-act="admin-banner-toggle" data-banner="${b.id}">${b.active?'Выключить':'Показать'}</button>
+          </div>
+        </div>`).join('')}
 
       <h3 style="margin-top:20px">Push-рассылка</h3>
       <textarea class="input-plain" rows="3" placeholder="Текст сообщения для гостей"></textarea>
@@ -651,10 +658,46 @@ document.addEventListener('click', ev => {
     toast('Настройки сохранены — приложение гостя обновлено');
   }
   if (act === 'admin-promo-create'){
-    if (!admin.promoDraft.code){ toast('Введите код промокода'); return; }
-    toast('Промокод ' + admin.promoDraft.code + ' создан');
+    const code = admin.promoDraft.code.trim().toUpperCase();
+    if (!code){ toast('Введите код промокода'); return; }
+    if (PROMOS.some(p => p.code === code)){ toast('Промокод ' + code + ' уже есть'); return; }
+    const type = admin.promoDraft.type;
+    const value = Math.max(0, Number(admin.promoDraft.value) || 0);
+    PROMOS.push({
+      code, type, value, min: 0, active: true,
+      label: type === 'percent' ? `−${value}% на заказ`
+           : (type === 'fixed' ? `−${fmt(value)}` : 'Бесплатная доставка')
+    });
     admin.promoDraft.code = '';
     renderAdmin();
+    render();
+    toast('Промокод ' + code + ' создан — он в списке акций у гостя');
+  }
+  if (act === 'admin-promo-toggle'){
+    const p = PROMOS.find(x => x.code === el.dataset.code);
+    if (!p) return;
+    p.active = !p.active;
+    if (!p.active && state.promo === p.code){ state.promo = null; state.promoMsg = ''; }
+    renderAdmin();
+    render();
+    toast('Промокод ' + p.code + (p.active ? ' включён' : ' отключён'));
+  }
+  if (act === 'admin-banner-toggle'){
+    const b = BANNERS.find(x => x.id === el.dataset.banner);
+    if (!b) return;
+    b.active = !b.active;
+    renderAdmin();
+    render();
+    toast(b.active ? 'Акция видна гостю на главной' : 'Акция скрыта с главной');
+  }
+  if (act === 'admin-banner-move'){
+    const i = BANNERS.findIndex(x => x.id === el.dataset.banner);
+    const j = i + Number(el.dataset.dir);
+    if (i < 0 || j < 0 || j >= BANNERS.length) return;
+    [BANNERS[i], BANNERS[j]] = [BANNERS[j], BANNERS[i]];
+    renderAdmin();
+    render();
+    toast('Порядок карусели обновлён');
   }
 });
 
