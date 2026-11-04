@@ -446,11 +446,11 @@ function scrHome(){
         value="${state.query}" data-act="search">
     </label>
     <div class="chips" id="homeChips" role="group" aria-label="Категории меню">
-      ${CATEGORIES.slice(0,5).map(c => `<button class="chip ${state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
+      ${CATEGORIES.slice(0,5).map(c => `<button class="chip ${state.screen==='catalog' && state.cat===c.id?'is-active':''}" data-act="cat" data-cat="${c.id}">${c.name}</button>`).join('')}
     </div>
     <div class="section-head" style="margin-top:22px">
       <h2 class="h2">Попробуйте любимое</h2>
-      <span class="count">${popular.length} блюд</span>
+      <span class="count">${popular.length} ${plural(popular.length,'блюдо','блюда','блюд')}</span>
     </div>
     <div class="dish-grid">${popular.map(d => dishCard(d)).join('')}</div>
   </section>`;
