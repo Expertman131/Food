@@ -6,94 +6,94 @@
 <title>Инструкция · васаби.</title>
 <link rel="stylesheet" href="styles.css">
 <style>
-  .g-wrap{max-width:760px;margin:0 auto;padding:28px 20px 80px;}
+  .g-wrap{max-width:760px;margin:0 auto;padding:var(--sp-28) var(--sp-20) var(--sp-60);}
   .g-wrap code{
     background:var(--surface-2);border:1px solid var(--line);border-radius:7px;
-    padding:2px 6px;font-size:.9em;color:var(--lime);
+    padding:var(--sp-2) var(--sp-6);font-size:.9em;color:var(--lime);
     overflow-wrap:anywhere;word-break:break-word;
   }
-  .g-head{margin-bottom:26px;}
+  .g-head{margin-bottom:var(--sp-28);}
   .g-back{
-    display:inline-flex;align-items:center;gap:8px;
-    color:var(--lime);text-decoration:none;font-size:14px;font-weight:600;
-    border:1px solid var(--line);border-radius:999px;padding:9px 16px;margin-bottom:20px;
+    display:inline-flex;align-items:center;gap:var(--sp-8);
+    color:var(--lime);text-decoration:none;font-size:var(--fs-14);font-weight:600;
+    border:1px solid var(--line);border-radius:999px;padding:var(--sp-10) var(--sp-16);margin-bottom:var(--sp-20);
   }
   .g-back:hover{background:rgba(198,241,110,.10);}
-  .g-title{font-size:clamp(26px,6vw,38px);line-height:1.15;font-weight:800;letter-spacing:-.02em;}
-  .g-sub{margin-top:10px;color:var(--soft);font-size:16px;line-height:1.55;}
+  .g-title{font-size:clamp(var(--fs-24),6vw,var(--fs-40));line-height:1.15;font-weight:800;letter-spacing:-.02em;}
+  .g-sub{margin-top:var(--sp-10);color:var(--soft);font-size:var(--fs-16);line-height:1.55;}
   .g-note{
-    margin-top:16px;padding:14px 16px;border-radius:14px;
+    margin-top:var(--sp-16);padding:var(--sp-14) var(--sp-16);border-radius:14px;
     background:var(--surface);border:1px solid var(--line-soft);
-    color:var(--soft);font-size:14.5px;line-height:1.55;
+    color:var(--soft);font-size:var(--fs-14);line-height:1.55;
   }
   .g-note b{color:var(--text);}
   .g-toc{
-    margin:26px 0 10px;padding:18px 20px;border-radius:18px;
+    margin:var(--sp-28) 0 var(--sp-10);padding:var(--sp-18) var(--sp-20);border-radius:18px;
     background:var(--panel);border:1px solid var(--line);
   }
-  .g-toc h2{margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
-  .g-toc ol{margin:0;padding-left:20px;display:grid;gap:9px;}
-  .g-toc a{color:var(--lime);text-decoration:none;font-size:15.5px;line-height:1.45;}
+  .g-toc h2{margin:0 0 var(--sp-12);font-size:var(--fs-13);font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  .g-toc ol{margin:0;padding-left:var(--sp-20);display:grid;gap:var(--sp-10);}
+  .g-toc a{color:var(--lime);text-decoration:none;font-size:var(--fs-16);line-height:1.45;}
   .g-toc a:hover{text-decoration:underline;}
-  .g-sec{margin-top:38px;}
+  .g-sec{margin-top:var(--sp-40);}
   .g-sec > h2{
-    font-size:23px;font-weight:800;letter-spacing:-.01em;line-height:1.25;
-    display:flex;align-items:baseline;gap:11px;
+    font-size:var(--fs-24);font-weight:800;letter-spacing:-.01em;line-height:1.25;
+    display:flex;align-items:baseline;gap:var(--sp-12);
   }
   .g-sec > h2 .n{
-    font-size:13px;font-weight:700;color:#0B1008;background:var(--lime);
-    border-radius:8px;padding:3px 8px;flex:none;letter-spacing:0;
+    font-size:var(--fs-13);font-weight:700;color:#0B1008;background:var(--lime);
+    border-radius:8px;padding:var(--sp-4) var(--sp-8);flex:none;letter-spacing:0;
   }
-  .g-sec > .g-lead{margin-top:8px;color:var(--soft);font-size:15.5px;line-height:1.6;}
+  .g-sec > .g-lead{margin-top:var(--sp-8);color:var(--soft);font-size:var(--fs-16);line-height:1.6;}
   .g-card{
-    margin-top:16px;padding:18px 18px 4px;border-radius:16px;
+    margin-top:var(--sp-16);padding:var(--sp-18) var(--sp-18) var(--sp-4);border-radius:16px;
     background:var(--panel);border:1px solid var(--line-soft);
   }
-  .g-card h3{font-size:17px;font-weight:700;margin-bottom:8px;}
-  .g-card > p:last-child,.g-card > ul:last-child,.g-card > ol:last-child{margin-bottom:14px;}
-  .g-list{margin:10px 0 14px;padding-left:20px;display:grid;gap:7px;color:var(--soft);font-size:15px;line-height:1.55;}
+  .g-card h3{font-size:var(--fs-18);font-weight:700;margin-bottom:var(--sp-8);}
+  .g-card > p:last-child,.g-card > ul:last-child,.g-card > ol:last-child{margin-bottom:var(--sp-14);}
+  .g-list{margin:var(--sp-10) 0 var(--sp-14);padding-left:var(--sp-20);display:grid;gap:var(--sp-8);color:var(--soft);font-size:var(--fs-16);line-height:1.55;}
   .g-list li::marker{color:var(--lime);}
   .g-list b{color:var(--text);}
-  .g-steps{margin:12px 0 14px;padding:0;list-style:none;counter-reset:g;}
+  .g-steps{margin:var(--sp-12) 0 var(--sp-14);padding:0;list-style:none;counter-reset:g;}
   .g-steps li{
-    counter-increment:g;position:relative;padding:0 0 12px 34px;color:var(--soft);
-    font-size:15px;line-height:1.55;
+    counter-increment:g;position:relative;padding:0 0 var(--sp-12) var(--sp-36);color:var(--soft);
+    font-size:var(--fs-16);line-height:1.55;
   }
   .g-steps li::before{
     content:counter(g);position:absolute;left:0;top:1px;
     width:23px;height:23px;border-radius:50%;background:var(--surface-2);border:1px solid var(--line);
-    color:var(--lime);font-size:12.5px;font-weight:700;display:grid;place-items:center;
+    color:var(--lime);font-size:var(--fs-12);font-weight:700;display:grid;place-items:center;
   }
   .g-steps b{color:var(--text);}
-  .g-table{width:100%;border-collapse:collapse;margin:12px 0 16px;font-size:14.5px;}
-  .g-table th,.g-table td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line-soft);vertical-align:top;}
-  .g-table th{color:var(--muted);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;}
+  .g-table{width:100%;border-collapse:collapse;margin:var(--sp-12) 0 var(--sp-16);font-size:var(--fs-14);}
+  .g-table th,.g-table td{text-align:left;padding:var(--sp-10) var(--sp-8);border-bottom:1px solid var(--line-soft);vertical-align:top;}
+  .g-table th{color:var(--muted);font-weight:600;font-size:var(--fs-12);text-transform:uppercase;letter-spacing:.06em;}
   .g-table td{color:var(--soft);}
   .g-table td b{color:var(--text);}
   .g-kbd{
-    display:inline-block;max-width:100%;padding:2px 8px;border-radius:8px;background:var(--surface-2);
-    border:1px solid var(--line);color:var(--lime);font-size:13.5px;font-weight:600;
+    display:inline-block;max-width:100%;padding:var(--sp-2) var(--sp-8);border-radius:8px;background:var(--surface-2);
+    border:1px solid var(--line);color:var(--lime);font-size:var(--fs-13);font-weight:600;
     overflow-wrap:anywhere;
   }
   .g-warn{
-    margin-top:16px;padding:16px 18px;border-radius:16px;
+    margin-top:var(--sp-16);padding:var(--sp-16) var(--sp-18);border-radius:16px;
     background:rgba(242,133,107,.08);border:1px solid rgba(242,133,107,.32);
-    color:var(--soft);font-size:15px;line-height:1.6;
+    color:var(--soft);font-size:var(--fs-16);line-height:1.6;
   }
-  .g-warn h3{color:var(--danger);font-size:16px;margin-bottom:8px;}
-  .g-warn ul{margin:8px 0 0;padding-left:20px;display:grid;gap:6px;}
-  .g-foot{margin-top:46px;padding-top:18px;border-top:1px solid var(--line-soft);color:var(--muted);font-size:14px;line-height:1.6;}
+  .g-warn h3{color:var(--danger);font-size:var(--fs-16);margin-bottom:var(--sp-8);}
+  .g-warn ul{margin:var(--sp-8) 0 0;padding-left:var(--sp-20);display:grid;gap:var(--sp-6);}
+  .g-foot{margin-top:var(--sp-48);padding-top:var(--sp-18);border-top:1px solid var(--line-soft);color:var(--muted);font-size:var(--fs-14);line-height:1.6;}
   .g-foot a{color:var(--lime);}
   @media (max-width:560px){
-    .g-wrap{padding:20px 14px 60px;}
-    .g-sec > h2{font-size:20px;}
-    .g-card{padding:16px 14px 2px;}
+    .g-wrap{padding:var(--sp-20) var(--sp-14) var(--sp-60);}
+    .g-sec > h2{font-size:var(--fs-20);}
+    .g-card{padding:var(--sp-16) var(--sp-14) var(--sp-2);}
     /* таблица на телефоне становится карточками — колонки не сжимаются в нечитаемую полосу */
     .g-table thead{display:none;}
-    .g-table tr{display:block;border:1px solid var(--line-soft);border-radius:14px;padding:12px 14px;margin-bottom:12px;}
-    .g-table td{display:flex;gap:14px;padding:6px 0;border-bottom:1px solid var(--line-soft);align-items:baseline;}
+    .g-table tr{display:block;border:1px solid var(--line-soft);border-radius:14px;padding:var(--sp-12) var(--sp-14);margin-bottom:var(--sp-12);}
+    .g-table td{display:flex;gap:var(--sp-14);padding:var(--sp-6) 0;border-bottom:1px solid var(--line-soft);align-items:baseline;}
     .g-table td:last-child{border-bottom:0;}
-    .g-table td::before{content:attr(data-label);flex:none;width:92px;color:var(--muted);font-size:12.5px;}
+    .g-table td::before{content:attr(data-label);flex:none;width:92px;color:var(--muted);font-size:var(--fs-12);}
   }
 </style>
 </head>
@@ -129,13 +129,13 @@
     <p class="g-lead">Прототип — это обычные файлы в папке. Ничего устанавливать не нужно.</p>
     <div class="g-card">
       <h3>Вариант 1. Вживую в интернете</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">Откройте в браузере (на телефоне тоже):</p>
-      <p style="margin:0 0 14px"><a class="g-kbd" href="https://expertman131.github.io/Food/" target="_blank" rel="noopener">https://expertman131.github.io/Food/</a></p>
-      <p style="color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 14px">Если страница открылась старой версией — обновите её: на телефоне потяните вниз и отпустите, на компьютере Ctrl+F5.</p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">Откройте в браузере (на телефоне тоже):</p>
+      <p style="margin:0 0 var(--sp-14)"><a class="g-kbd" href="https://expertman131.github.io/Food/" target="_blank" rel="noopener">https://expertman131.github.io/Food/</a></p>
+      <p style="color:var(--muted);font-size:var(--fs-14);line-height:1.6;margin:0 0 var(--sp-14)">Если страница открылась старой версией — обновите её: на телефоне потяните вниз и отпустите, на компьютере Ctrl+F5.</p>
     </div>
     <div class="g-card">
       <h3>Вариант 2. На своём компьютере</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">Двойной клик по файлу <b>index.html</b> в папке <b>prototype</b>. Всё работает локально, без интернета и без сервера.</p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">Двойной клик по файлу <b>index.html</b> в папке <b>prototype</b>. Всё работает локально, без интернета и без сервера.</p>
     </div>
     <div class="g-card">
       <h3>Что где лежит</h3>
@@ -337,7 +337,7 @@
         <li>Загрузите файл или вставьте строки текстом, нажмите <b>«Проверить меню»</b>.</li>
         <li>В предпросмотре видно, что добавится, что обновится и есть ли ошибки. Потом <b>«Импортировать»</b>.</li>
       </ol>
-      <p style="color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 14px">Фото и модификаторы файл не переносит — новые позиции получат демо-фото, свои снимки загрузите потом при редактировании.</p>
+      <p style="color:var(--muted);font-size:var(--fs-14);line-height:1.6;margin:0 0 var(--sp-14)">Фото и модификаторы файл не переносит — новые позиции получат демо-фото, свои снимки загрузите потом при редактировании.</p>
     </div>
 
     <div class="g-card">
@@ -411,7 +411,7 @@
         <li>Приём оплаты и push-провайдер.</li>
         <li>Хранилище файлов для фото блюд и баннеров.</li>
       </ol>
-      <p style="color:var(--muted);font-size:14.5px;line-height:1.6;margin:0 0 14px">Прототип — это согласованный план интерфейса и сценариев. Когда будет сервер, вёрстка и логика из этого макета переносятся почти один в один.</p>
+      <p style="color:var(--muted);font-size:var(--fs-14);line-height:1.6;margin:0 0 var(--sp-14)">Прототип — это согласованный план интерфейса и сценариев. Когда будет сервер, вёрстка и логика из этого макета переносятся почти один в один.</p>
     </div>
   </section>
 
@@ -419,23 +419,23 @@
     <h2><span class="n">7</span>Частые вопросы</h2>
     <div class="g-card">
       <h3>Изменения пропали после перезагрузки</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">Так и задумано: макет хранит данные только в открытой вкладке. Нажмите «Сбросить демо-данные», чтобы вернуть исходное состояние.</p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">Так и задумано: макет хранит данные только в открытой вкладке. Нажмите «Сбросить демо-данные», чтобы вернуть исходное состояние.</p>
     </div>
     <div class="g-card">
       <h3>Нажимаю на элемент справа, а открывается пустой экран</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">Такого больше нет: любой пункт списка экранов открывает непустой экран. Если встретили пустой — напишите, это ошибка.</p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">Такого больше нет: любой пункт списка экранов открывает непустой экран. Если встретили пустой — напишите, это ошибка.</p>
     </div>
     <div class="g-card">
       <h3>Как попасть в админ-панель с телефона гостя</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">В приложении гостя: «Профиль» → «Доступ сотрудника». Это проверка ролей в действии.</p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">В приложении гостя: «Профиль» → «Доступ сотрудника». Это проверка ролей в действии.</p>
     </div>
     <div class="g-card">
       <h3>Почему аналитика показывает красивые, но ненастоящие цифры</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">Потому что сервера нет. Цифры заполняют макет, чтобы было видно, как будет выглядеть отчёт. После подключения базы здесь появятся ваши реальные данные.</p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">Потому что сервера нет. Цифры заполняют макет, чтобы было видно, как будет выглядеть отчёт. После подключения базы здесь появятся ваши реальные данные.</p>
     </div>
     <div class="g-card">
       <h3>Я что-то сломал, но не понимаю, где</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">Кнопка «Сбросить демо-данные» вернёт исходное состояние. В админке у каждого раздела внизу есть честная сноска о том, что не подключено.</p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">Кнопка «Сбросить демо-данные» вернёт исходное состояние. В админке у каждого раздела внизу есть честная сноска о том, что не подключено.</p>
     </div>
   </section>
 
@@ -443,8 +443,8 @@
     <h2><span class="n">8</span>Для разработчика</h2>
     <div class="g-card">
       <h3>Подробное техническое описание</h3>
-      <p style="color:var(--soft);font-size:15px;line-height:1.6;margin:0 0 14px">Все механики, правила бонусов, состав экранов, правила вёрстки, список ограничений и команды публикации — в <b>README.md</b> рядом с прототипом.</p>
-      <p style="margin:0 0 14px"><a class="g-kbd" href="https://github.com/Expertman131/Food/blob/main/README.md" target="_blank" rel="noopener">README.md на GitHub</a></p>
+      <p style="color:var(--soft);font-size:var(--fs-16);line-height:1.6;margin:0 0 var(--sp-14)">Все механики, правила бонусов, состав экранов, правила вёрстки, список ограничений и команды публикации — в <b>README.md</b> рядом с прототипом.</p>
+      <p style="margin:0 0 var(--sp-14)"><a class="g-kbd" href="https://github.com/Expertman131/Food/blob/main/README.md" target="_blank" rel="noopener">README.md на GitHub</a></p>
     </div>
   </section>
 

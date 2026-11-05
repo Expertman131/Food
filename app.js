@@ -95,6 +95,11 @@ const state = {
   autoStatus: true,
   paying: false,
   authStep: 'phone',
+  authPhone: '+7 900 000-00-01',  // номер, который гость вводит при входе
+  authCode: '1234',               // демо-код «из SMS»: реальных SMS нет
+  authCodeInput: '1234',
+  authErr: '',                    // ошибка на шаге с номером
+  authCodeErr: '',                // ошибка на шаге с кодом
   table: null,              // { no:'12', locId:'l1' } — заказ с QR-кода на столе
   qrCat: 'all',
   errors: {}
@@ -272,6 +277,29 @@ function upsellIds(){
 const hm = s => { const [h,m] = s.split(':').map(Number); return h*60 + m; };
 const m2t = m => String(Math.floor(m/60)).padStart(2,'0') + ':' + String(m%60).padStart(2,'0');
 
+/* Точка открыта по своим часам: из этого и честный статус, и запрет
+   «как можно скорее», когда кухня уже закрыта */
+function locIsOpen(loc, at){
+  if (!loc) return true;
+  const d = at || new Date();
+  const now = d.getHours()*60 + d.getMinutes();
+  return now >= hm(loc.open) && now < hm(loc.close);
+}
+function locStatusText(loc){
+  return locIsOpen(loc) ? 'Открыто до ' + loc.close : 'Сейчас закрыто · откроется в ' + loc.open;
+}
+/* закрытая точка — заказ только на завтра: время выбирается слотом */
+function applyOpenHours(){
+  if (state.table) return;
+  const loc = LOCATIONS.find(l => l.id === state.locationId) || LOCATIONS[0];
+  if (locIsOpen(loc)) return;
+  state.timeMode = 'slot';
+  if (!state.slot){
+    const first = timeSlots().tomorrow[0];
+    if (first) state.slot = { day:first.day, time:first.time };
+  }
+}
+
 function timeSlots(){
   const loc = LOCATIONS.find(l => l.id === state.locationId) || LOCATIONS[0];
   const open = hm(loc.open), close = hm(loc.close);
@@ -365,6 +393,7 @@ function go(name, opts = {}){
   state.screen = name;
   state.errors = {};
   if (name === 'payment') state.paying = false;
+  if (name === 'checkout') applyOpenHours();
   render();
   if (opts.top) $('#viewport').scrollTop = 0;
 }
@@ -442,7 +471,7 @@ function dishCard(d, showBadge = true){
   const out = !dishAvailable(d);
   const fav = isFav(d.id);
   return `
-  <article class="pcard ${out?'is-out':''}" data-act="open-dish" data-dish="${d.id}" tabindex="0" role="button" aria-label="${d.name}, ${fmt(dishPrice(d))}">
+  <article class="pcard ${out?'is-out':''}" data-act="open-dish" data-dish="${d.id}">
     <div class="pcard-img">
       <img src="${d.img}" alt="${d.name}" loading="lazy">
       ${(showBadge && d.badge && !out) ? `<span class="pcard-badge">${esc(d.badge)}</span>` : ''}
@@ -451,7 +480,7 @@ function dishCard(d, showBadge = true){
         aria-label="${fav?'Убрать из избранного':'В избранное'}" aria-pressed="${fav}">${icon(fav?'heartFill':'heart')}</button>
     </div>
     <div class="pcard-body">
-      <div class="pcard-name">${d.name}</div>
+      <button class="pcard-name" type="button" data-act="open-dish" data-dish="${d.id}">${d.name}</button>
       <div class="pcard-meta">${d.unit}</div>
       <div class="pcard-desc">${d.desc}</div>
       <div class="pcard-foot">
@@ -514,7 +543,7 @@ function scrHome(){
   const last = state.orders[0];
   return `
   ${appHeader()}
-  <section class="section" style="padding-bottom:0;margin-bottom:14px">
+  <section class="section" style="padding-bottom:0;margin-bottom:var(--sp-14)">
     <label class="search" style="margin-bottom:0">
       ${icon('search')}
       <input type="search" placeholder="Найти любимые роллы" id="homeSearch" aria-label="Поиск по меню"
@@ -563,12 +592,12 @@ function scrHome(){
     <div class="section-head">
       <div>
         <h2 class="h1">Наше меню</h2>
-        <div class="muted small" style="margin-top:6px">Вкус, к которому возвращаются</div>
+        <div class="muted small" style="margin-top:var(--sp-6)">Вкус, к которому возвращаются</div>
       </div>
       <button class="link-line" data-act="go" data-screen="catalog">Все ${DISHES.length} ${plural(DISHES.length,'блюдо','блюда','блюд')} ${icon('arrowRight')}</button>
     </div>
     ${popular.length ? `
-    <div class="section-head" style="margin-top:18px">
+    <div class="section-head" style="margin-top:var(--sp-18)">
       <h2 class="h2">Попробуйте любимое</h2>
       <span class="count">${popular.length} ${plural(popular.length,'блюдо','блюда','блюд')}</span>
     </div>
@@ -586,9 +615,9 @@ function scrCatalog(){
   const list = filterDishes();
   return `
   ${appHeader()}
-  <section class="section" style="padding-top:4px">
+  <section class="section" style="padding-top:var(--sp-4)">
     <h1 class="h1">Наше меню</h1>
-    <div class="muted small" style="margin-top:6px">Вкус, к которому возвращаются</div>
+    <div class="muted small" style="margin-top:var(--sp-6)">Вкус, к которому возвращаются</div>
   </section>
   <section class="section" style="margin-bottom:0">
     <label class="search">
@@ -603,7 +632,7 @@ function scrCatalog(){
       </div>
     </div>
   </section>
-  <section class="section" style="margin-top:20px">
+  <section class="section" style="margin-top:var(--sp-20)">
     <div class="section-head">
       <h2 class="h2">${state.cat==='all'?'Все блюда':CATEGORIES.find(c=>c.id===state.cat).name}</h2>
       <span class="count">${list.length} ${plural(list.length,'блюдо','блюда','блюд')}</span>
@@ -625,7 +654,7 @@ function filterDishes(){
 function scrProduct(){
   const d = dishById(state.productId);
   if (!d) return `<div class="empty">Блюдо не найдено
-    <button class="btn-outline" style="margin-top:14px" data-act="go" data-screen="catalog">Открыть меню</button>
+    <button class="btn-outline" style="margin-top:var(--sp-14)" data-act="go" data-screen="catalog">Открыть меню</button>
   </div>`;
   const key = lineKey(d.id, state.productMods);
   const inCart = state.cart[key];
@@ -651,7 +680,7 @@ function scrProduct(){
   </div>
   <section class="section">
     <div class="eyebrow">ВАСАБИ / ${CATEGORIES.find(c=>c.id===d.cat).name.toUpperCase()}</div>
-    <h1 class="h1" style="margin-top:10px">${d.name}</h1>
+    <h1 class="h1" style="margin-top:var(--sp-10)">${d.name}</h1>
     <div class="pdp-meta">${d.unit.replace(' · ','  •  ')}</div>
     <p class="pdp-desc">${d.desc}</p>
     ${out ? `<div class="notice out-notice">${icon('info')}<span>Блюдо закончилось — ресторан снял его со стоп-листа. Вернитесь в меню или выберите похожее.</span></div>` : ''}
@@ -668,14 +697,14 @@ function scrProduct(){
   ${mods && !out ? `
   <section class="section">
     <div class="section-head"><h2 class="h2">Дополнительно</h2><span class="count">по желанию</span></div>
-    <div class="card" style="padding:4px 18px">${mods}</div>
+    <div class="card" style="padding:var(--sp-4) var(--sp-18)">${mods}</div>
   </section>` : ''}
   <section class="section">
     <div class="section-head"><h2 class="h2">Состав и аллергены</h2></div>
     <div class="card">
       <p class="soft small">${d.composition || 'Состав уточняется у оператора.'}</p>
-      <p class="muted small" style="margin-top:10px">Содержит: ${(d.allergens || []).length ? d.allergens.join(', ') : 'не выявлено аллергенов'}.</p>
-      <p class="muted small" style="margin-top:8px">Если у вас есть аллергия, сообщите оператору до оплаты — блюдо могут отменить и полностью вернуть деньги.</p>
+      <p class="muted small" style="margin-top:var(--sp-10)">Содержит: ${(d.allergens || []).length ? d.allergens.join(', ') : 'не выявлено аллергенов'}.</p>
+      <p class="muted small" style="margin-top:var(--sp-8)">Если у вас есть аллергия, сообщите оператору до оплаты — блюдо могут отменить и полностью вернуть деньги.</p>
     </div>
   </section>
   <div class="pdp-bar">
@@ -700,16 +729,16 @@ function scrFavorites(){
   const total = avail.reduce((s,d) => s + dishPrice(d), 0);
   return `
   ${appHeader()}
-  <section class="section" style="padding-top:4px">
+  <section class="section" style="padding-top:var(--sp-4)">
     <h1 class="h1">Избранное</h1>
-    <div class="muted small" style="margin-top:6px">${list.length} ${plural(list.length,'блюдо','блюда','блюд')} · сохраняются в вашем аккаунте</div>
+    <div class="muted small" style="margin-top:var(--sp-6)">${list.length} ${plural(list.length,'блюдо','блюда','блюд')} · сохраняются в вашем аккаунте</div>
   </section>
   ${!list.length ? `
   <section class="section">
     <div class="empty">
-      <div style="margin-bottom:12px">${icon('heart')}</div>
+      <div style="margin-bottom:var(--sp-12)">${icon('heart')}</div>
       Пока пусто. Нажмите на сердечко в карточке блюда — и оно появится здесь.
-      <div style="margin-top:18px"><button class="btn-lime" style="width:auto;margin:0 auto" data-act="go" data-screen="catalog"><span>Открыть меню</span>${icon('arrowRight')}</button></div>
+      <div style="margin-top:var(--sp-18)"><button class="btn-lime" style="width:auto;margin:0 auto" data-act="go" data-screen="catalog"><span>Открыть меню</span>${icon('arrowRight')}</button></div>
     </div>
   </section>` : `
   <section class="section">
@@ -717,10 +746,10 @@ function scrFavorites(){
   </section>
   ${avail.length ? `
   <section class="section">
-    <div class="panel-olive" style="display:flex;gap:14px;align-items:center">
+    <div class="panel-olive" style="display:flex;gap:var(--sp-14);align-items:center">
       <div class="grow">
         <div style="font-weight:700;color:var(--lime)">Добавить всё в корзину</div>
-        <div class="soft small" style="margin-top:3px">${avail.length} ${plural(avail.length,'блюдо','блюда','блюд')} · ${fmt(total)}</div>
+        <div class="soft small" style="margin-top:var(--sp-4)">${avail.length} ${plural(avail.length,'блюдо','блюда','блюд')} · ${fmt(total)}</div>
       </div>
       <button class="btn-lime fav-all-btn" data-act="fav-add-all"><span>В корзину</span>${icon('arrowRight')}</button>
     </div>
@@ -736,12 +765,12 @@ function scrCart(){
   if (!lines.length){
     return `
     ${appHeader()}
-    <section class="section" style="padding-top:26px">
+    <section class="section" style="padding-top:var(--sp-28)">
       <h1 class="h1">Ваш вкусный выбор</h1>
-      <div class="empty" style="margin-top:24px">
-        <div style="margin-bottom:12px">${icon('bag')}</div>
+      <div class="empty" style="margin-top:var(--sp-24)">
+        <div style="margin-bottom:var(--sp-12)">${icon('bag')}</div>
         В корзине пока пусто.<br>Выберите что-нибудь из меню.
-        <div style="margin-top:18px"><button class="btn-lime" style="width:auto;margin:0 auto" data-act="go" data-screen="catalog"><span>Открыть меню</span>${icon('arrowRight')}</button></div>
+        <div style="margin-top:var(--sp-18)"><button class="btn-lime" style="width:auto;margin:0 auto" data-act="go" data-screen="catalog"><span>Открыть меню</span>${icon('arrowRight')}</button></div>
       </div>
     </section>`;
   }
@@ -791,15 +820,15 @@ function scrCart(){
 
   return `
   ${appHeader()}
-  <section class="section" style="padding-top:4px">
+  <section class="section" style="padding-top:var(--sp-4)">
     <h1 class="h1">Ваш вкусный выбор</h1>
   </section>
   <section class="section">
-    <div class="panel-olive" style="display:flex;gap:14px;align-items:center">
+    <div class="panel-olive" style="display:flex;gap:var(--sp-14);align-items:center">
       <span style="color:var(--lime);display:grid;place-items:center">${icon('bike')}</span>
       <div>
         <div style="font-weight:700;color:var(--lime)">Доставка за наш счёт</div>
-        <div class="soft small" style="margin-top:3px">Привезём за ${RULES.prepTime}</div>
+        <div class="soft small" style="margin-top:var(--sp-4)">Привезём за ${RULES.prepTime}</div>
       </div>
     </div>
   </section>
@@ -812,8 +841,8 @@ function scrCart(){
   <section class="section">
     <div class="card">
       <h2 class="h2">Всё для вашего вечера</h2>
-      <p class="muted small" style="margin-top:6px">Соевый соус, имбирь и васаби включены.</p>
-      <div style="margin-top:12px">
+      <p class="muted small" style="margin-top:var(--sp-6)">Соевый соус, имбирь и васаби включены.</p>
+      <div style="margin-top:var(--sp-12)">
         <div class="sum-row"><span>Блюда</span><span class="val">${fmt(t.sub)}</span></div>
         <div class="sum-row"><span>Доставка</span><span class="val ${t.delivery===0?'free-tag':''}">${t.delivery===0?'Бесплатно':fmt(t.delivery)}</span></div>
         ${t.discount ? `<div class="sum-row"><span>Промокод ${state.promo}</span><span class="val free-tag">−${fmt(t.discount)}</span></div>` : ''}
@@ -831,11 +860,12 @@ function scrCheckout(){
   const table = state.deliveryType === 'table' && !!state.table;
   const pickup = state.deliveryType === 'pickup';
   const loc = LOCATIONS.find(l => l.id === state.locationId);
+  const closed = !table && !locIsOpen(loc);
   return `
   ${appBar('Оформление заказа')}
   <section class="section">
     <div class="eyebrow">${table ? 'ЗАКАЗ ИЗ ЗАЛА' : 'ПОЧТИ У ВАС'}</div>
-    <h1 class="h1" style="margin-top:10px">${table ? `Принесём к столу ${state.table.no}` : 'Куда привезти вкусный вечер?'}</h1>
+    <h1 class="h1" style="margin-top:var(--sp-10)">${table ? `Принесём к столу ${state.table.no}` : 'Куда привезти вкусный вечер?'}</h1>
   </section>
   <section class="section">
     <div class="notice">
@@ -846,7 +876,7 @@ function scrCheckout(){
     </div>
   </section>
   <section class="section">
-    <div class="seg" style="margin-bottom:18px">
+    <div class="seg" style="margin-bottom:var(--sp-18)">
       ${state.table ? `<button class="${table?'is-active':''}" data-act="delivery-type" data-type="table">К столу</button>` : ''}
       <button class="${!pickup&&!table?'is-active':''}" data-act="delivery-type" data-type="delivery">Доставка</button>
       <button class="${pickup?'is-active':''}" data-act="delivery-type" data-type="pickup">Самовывоз</button>
@@ -860,30 +890,31 @@ function scrCheckout(){
         <div class="pay-name">${icon('pin')} ${locById(state.table.locId).name}</div>
         <span class="a-pill lime">Стол ${state.table.no}</span>
       </div>
-      <div class="order-addr" style="margin-top:10px">${locById(state.table.locId).address}</div>
-      <p class="muted small" style="margin-top:10px">Готовность ${RULES.prepTable} после подтверждения заказа оператором.</p>
+      <div class="order-addr" style="margin-top:var(--sp-10)">${locById(state.table.locId).address}</div>
+      <p class="muted small" style="margin-top:var(--sp-10)">Готовность ${RULES.prepTable} после подтверждения заказа оператором.</p>
     </div>
-    <div class="field" style="margin-top:16px">
+    <div class="field" style="margin-top:var(--sp-16)">
       <label for="fComment">Пожелания к столу (необязательно)</label>
       <textarea id="fComment" data-act="f" data-field="comment" placeholder="Например: без имбиря, принести сразу, отдельная тарелка"
         autocapitalize="sentences" enterkeyhint="done">${state.comment}</textarea>
     </div>
   </section>` : pickup ? `
   <section class="section">
-    <h2 class="h2" style="margin-bottom:12px">Точка самовывоза</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-12)">Точка самовывоза</h2>
     ${LOCATIONS.map(l => `
-      <div class="pay-row ${state.locationId===l.id?'is-on':''}" data-act="pick-location" data-id="${l.id}" role="button" tabindex="0" aria-pressed="${state.locationId===l.id}" style="display:flex;gap:13px;align-items:center">
+      <div class="pay-row ${state.locationId===l.id?'is-on':''}" data-act="pick-location" data-id="${l.id}" role="button" tabindex="0" aria-pressed="${state.locationId===l.id}" style="display:flex;gap:var(--sp-12);align-items:center">
         <div class="pay-icon">${icon('pin')}</div>
         <div class="grow">
           <div class="pay-name">${l.name}</div>
           <div class="pay-note">${l.address} · ${l.hours}</div>
+          <div class="pay-note" style="color:${locIsOpen(l) ? 'var(--lime)' : 'var(--muted)'}">${locStatusText(l)}</div>
         </div>
         <span class="radio"></span>
       </div>`).join('')}
-    <p class="muted small" style="margin-top:12px">Готовность заказа — ${RULES.leadPickup} минут после подтверждения.</p>
+    <p class="muted small" style="margin-top:var(--sp-12)">Готовность заказа — ${RULES.leadPickup} минут после подтверждения.</p>
   </section>` : `
   <section class="section">
-    <h2 class="h2" style="margin-bottom:14px">Ваши контакты</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-14)">Ваши контакты</h2>
     <div class="field">
       <label for="fName">Имя</label>
       <input id="fName" data-act="f" data-field="name" value="${state.user.name}" placeholder="Как к вам обращаться"
@@ -901,9 +932,9 @@ function scrCheckout(){
     </div>
   </section>
   <section class="section">
-    <h2 class="h2" style="margin-bottom:14px">Адрес доставки</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-14)">Адрес доставки</h2>
     ${addressBook()}
-    <div class="field" style="margin-top:16px">
+    <div class="field" style="margin-top:var(--sp-16)">
       <label for="fAddr">Улица, дом, квартира</label>
       <input id="fAddr" data-act="f" data-field="address" value="${state.address}" placeholder="Улица, дом, квартира"
         autocomplete="street-address" autocapitalize="words" enterkeyhint="next"
@@ -915,23 +946,25 @@ function scrCheckout(){
       <textarea id="fComment" data-act="f" data-field="comment" placeholder="Подъезд, этаж, домофон, пожелания"
         autocapitalize="sentences" enterkeyhint="done">${state.comment}</textarea>
     </div>
+    <p class="order-addr">${icon('pin')} Доставит ${loc.name} · ${locStatusText(loc)}</p>
   </section>`}
 
   ${table ? '' : `
   <section class="section">
-    <h2 class="h2" style="margin-bottom:12px">${pickup ? 'Время самовывоза' : 'Время доставки'}</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-12)">${pickup ? 'Время самовывоза' : 'Время доставки'}</h2>
+    ${closed ? `<div class="notice" style="margin-bottom:var(--sp-14)">${icon('info')}<span>Сейчас закрыто: ${loc.name} работает ${loc.hours}. Заказ оформить можно — выберите время на ${state.slot && state.slot.day === 'tomorrow' ? 'завтра' : 'открытие'}.</span></div>` : ''}
     <div class="seg">
-      <button class="${state.timeMode==='asap'?'is-active':''}" data-act="time-mode" data-mode="asap">Как можно скорее</button>
+      <button class="${state.timeMode==='asap'?'is-active':''}" data-act="time-mode" data-mode="asap" ${closed?'disabled':''}>Как можно скорее</button>
       <button class="${state.timeMode==='slot'?'is-active':''}" data-act="time-mode" data-mode="slot">К определённому времени</button>
     </div>
     ${state.timeMode === 'slot'
       ? slotPicker()
-      : `<p class="muted small" style="margin-top:12px">Привезём за ${RULES.prepTime} после подтверждения заказа.</p>`}
+      : `<p class="muted small" style="margin-top:var(--sp-12)">Привезём за ${RULES.prepTime} после подтверждения заказа.</p>`}
     ${state.errors.slot ? `<p class="err" role="alert">${state.errors.slot}</p>` : ''}
   </section>`}
 
   <section class="section">
-    <h2 class="h2" style="margin-bottom:14px">Способ оплаты</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-14)">Способ оплаты</h2>
     ${table ? payMethodRow('table','cash','Оплата у стола','Наличные, карта или СБП — официант принесёт терминал к столу') : ''}
     ${payMethodRow('card','card','Картой онлайн','Visa, Mastercard, МИР — ЮKassa')}
     ${payMethodRow('sbp','wallet','СБП','Оплата по QR-коду через приложение банка')}
@@ -972,18 +1005,18 @@ function addressBook(){
   return `
   <div class="addr-list">
     ${state.addresses.map(a => `
-      <div class="addr-row ${state.addressId===a.id?'is-on':''}" data-act="addr-select" data-id="${a.id}" role="button" tabindex="0" aria-pressed="${state.addressId===a.id}">
-        <div class="pay-icon">${icon(a.label === 'Дом' ? 'home' : 'office')}</div>
-        <div class="grow">
-          <div class="pay-name">${a.label}</div>
-          <div class="pay-note">${a.address}</div>
-        </div>
+      <div class="addr-row ${state.addressId===a.id?'is-on':''}" data-act="addr-select" data-id="${a.id}">
+        <span class="pay-icon">${icon(a.label === 'Дом' ? 'home' : 'office')}</span>
+        <button class="grow addr-pick" type="button" data-act="addr-select" data-id="${a.id}" aria-pressed="${state.addressId===a.id}">
+          <span class="pay-name">${a.label}</span>
+          <span class="pay-note">${a.address}</span>
+        </button>
         ${state.addressId === a.id
           ? '<span class="radio"></span>'
           : `<button class="addr-del" data-act="addr-delete" data-id="${a.id}" aria-label="Удалить адрес ${a.label}">${icon('trash')}</button>`}
       </div>`).join('')}
   </div>
-  <div class="field" style="margin-top:14px">
+  <div class="field" style="margin-top:var(--sp-14)">
     <label for="fNewAddr">Новый адрес</label>
     <input id="fNewAddr" data-act="f" data-field="newAddress" value="${state.newAddress}" placeholder="Улица, дом, квартира"
       autocomplete="street-address" autocapitalize="words" enterkeyhint="done"
@@ -1012,7 +1045,7 @@ function scrPayment(){
   ${appBar('Оплата')}
   <section class="section">
     <div class="eyebrow">ШАГ 2 ИЗ 2</div>
-    <h1 class="h1" style="margin-top:10px">Подтвердите заказ</h1>
+    <h1 class="h1" style="margin-top:var(--sp-10)">Подтвердите заказ</h1>
   </section>
   <section class="section">
     <div class="card">
@@ -1029,7 +1062,7 @@ function scrPayment(){
   </section>
 
   <section class="section">
-    <h2 class="h2" style="margin-bottom:12px">Промокод</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-12)">Промокод</h2>
     <div class="row gap-10">
       <div class="grow"><input class="input-plain" data-act="f" data-field="promoInput" value="${state.promoInput || ''}" placeholder="WASABI10"
         aria-label="Промокод" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done"
@@ -1037,7 +1070,7 @@ function scrPayment(){
       <button class="btn-outline" data-act="apply-promo">Применить</button>
     </div>
     ${state.promoMsg ? `<p class="${promoOk?'ok':'err'}" id="promoMsg"${promoOk?'':' role="alert"'}>${state.promoMsg}</p>` : ''}
-    <p class="muted small" style="margin-top:10px">Действующие: ${activePromos().map(p => `${p.code} (${p.label}${p.min ? ', от ' + fmt(p.min) : ''})`).join(', ')}.</p>
+    <p class="muted small" style="margin-top:var(--sp-10)">Действующие: ${activePromos().map(p => `${p.code} (${p.label}${p.min ? ', от ' + fmt(p.min) : ''})`).join(', ')}.</p>
   </section>
 
   <section class="section">
@@ -1045,8 +1078,8 @@ function scrPayment(){
     <div class="card">
       ${RULES.bonusEnabled ? `
         <p class="small soft">1 балл = 1 ₽. Кэшбэк ${RULES.bonusAccrual}% начислим после выполнения заказа.${bonusExpiryMonths() ? ` Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>
-        ${state.deliveryType === 'table' ? '<p class="muted small" style="margin-top:12px">За заказ к столу без аккаунта баллы не начисляются и не списываются.</p>' : `
-          <div class="pay-row ${t.bonusUse?'is-on':''}" ${t.bonusAvailable?'data-act="bonus-toggle" role="button" tabindex="0"':''} aria-pressed="${t.bonusUse>0}" style="margin-top:12px">
+        ${state.deliveryType === 'table' ? '<p class="muted small" style="margin-top:var(--sp-12)">За заказ к столу без аккаунта баллы не начисляются и не списываются.</p>' : `
+          <div class="pay-row ${t.bonusUse?'is-on':''}" ${t.bonusAvailable?'data-act="bonus-toggle" role="button" tabindex="0"':''} aria-pressed="${t.bonusUse>0}" style="margin-top:var(--sp-12)">
             <div class="pay-icon">${icon('gift')}</div>
             <div class="grow">
               <div class="pay-name">${t.bonusUse ? 'Не списывать бонусы' : 'Списать ' + t.bonusAvailable + ' ' + plural(t.bonusAvailable,'балл','балла','баллов')}</div>
@@ -1054,9 +1087,9 @@ function scrPayment(){
             </div>
             <span class="radio"></span>
           </div>
-          <p class="hint" style="margin-top:10px">Можно оплатить до ${RULES.bonusMaxPay}% суммы блюд после промокода. Доставка баллами не оплачивается.${bonusExpiryMonths() ? ` Срок списания начисленных баллов — ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>`}
+          <p class="hint" style="margin-top:var(--sp-10)">Можно оплатить до ${RULES.bonusMaxPay}% суммы блюд после промокода. Доставка баллами не оплачивается.${bonusExpiryMonths() ? ` Срок списания начисленных баллов — ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>`}
       ` : '<p class="small soft">Бонусная программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
-      <p class="muted small" style="margin-top:12px">Демо-счёт в этой вкладке · не связан с iiko</p>
+      <p class="muted small" style="margin-top:var(--sp-12)">Демо-счёт в этой вкладке · не связан с iiko</p>
     </div>
   </section>
 
@@ -1086,8 +1119,8 @@ function scrStatus(){
   <section class="section">
     <div class="status-hero">
       <div class="eyebrow">ЗАКАЗ №${order.no}${isTable ? ' · СТОЛ ' + order.tableNo : ''}</div>
-      <h1 class="h1" style="margin-top:10px">${flowFor(order)[cur].title}</h1>
-      <p class="soft" style="margin-top:8px;font-size:15px">${
+      <h1 class="h1" style="margin-top:var(--sp-10)">${flowFor(order)[cur].title}</h1>
+      <p class="soft" style="margin-top:var(--sp-8);font-size:var(--fs-16)">${
         order.status==='done' ? (isTable ? 'Подано к столу. Приятного аппетита!' : 'Заказ доставлен. Приятного аппетита!')
         : isTable ? `Принесём к столу через ${RULES.prepTable}`
         : (order.slot ? `Приедем ${eta}` : 'Приедем за 45–60 минут после приготовления')}</p>
@@ -1127,7 +1160,7 @@ function scrStatus(){
   <section class="section">
     <div class="card">
       <h2 class="h2">Состав заказа</h2>
-      <div style="margin-top:10px">
+      <div style="margin-top:var(--sp-10)">
         ${order.items.map(i => `<div class="sum-row"><span>${i.name} × ${i.qty}</span><span class="val">${fmt(i.price*i.qty)}</span></div>`).join('')}
         <div class="sum-row"><span>${isTable ? 'Обслуживание за столом' : 'Доставка'}</span><span class="val ${order.delivery===0?'free-tag':''}">${order.delivery===0?'Бесплатно':fmt(order.delivery)}</span></div>
         <div class="sum-row is-total"><span class="lbl">Итого</span><span class="val">${fmt(order.total)}</span></div>
@@ -1140,14 +1173,15 @@ function scrStatus(){
   ${order.status === 'new' ? `
   <section class="section">
     <button class="btn-outline wide-danger" data-act="cancel-order" data-id="${order.id}">${icon('x')} Отменить заказ</button>
-    <p class="muted small" style="margin-top:8px;text-align:center">Пока заказ не приняли в работу — отмена без комиссии.</p>
+    <p class="muted small" style="margin-top:var(--sp-8);text-align:center">Пока заказ не приняли в работу — отмена без комиссии.</p>
   </section>` : ''}
 
   <section class="section">
     <div class="row gap-10">
-      <button class="btn-outline grow" data-act="advance-status" style="border-radius:999px;padding:13px 16px">Следующий статус</button>
-      <button class="btn-outline grow" data-act="go" data-screen="orders" style="border-radius:999px;padding:13px 16px">Все заказы</button>
+      <button class="btn-outline grow" data-act="advance-status" style="border-radius:999px;padding:var(--sp-12) var(--sp-16)">Демо: следующий статус</button>
+      <button class="btn-outline grow" data-act="go" data-screen="orders" style="border-radius:999px;padding:var(--sp-12) var(--sp-16)">Все заказы</button>
     </div>
+    <p class="muted small" style="margin-top:var(--sp-8);text-align:center">«Следующий статус» — кнопка для проверки экрана. В бою статус меняет ресторан.</p>
   </section>`;
 }
 
@@ -1159,27 +1193,27 @@ function scrStatusRejected(order){
     <div class="reject-hero ${cancelled ? 'is-cancel' : 'is-reject'}">
       <span class="reject-ico">${icon(cancelled ? 'x' : 'info')}</span>
       <div class="eyebrow">ЗАКАЗ №${order.no}</div>
-      <h1 class="h1" style="margin-top:10px">${cancelled ? 'Заказ отменён' : 'Ресторан отказал в заказе'}</h1>
-      <p class="soft" style="margin-top:10px;font-size:14.5px">${order.rejectReason || (cancelled ? 'Вы отменили заказ до того, как его приняли в работу.' : 'Ресторан не смог принять заказ в работу.')}</p>
+      <h1 class="h1" style="margin-top:var(--sp-10)">${cancelled ? 'Заказ отменён' : 'Ресторан отказал в заказе'}</h1>
+      <p class="soft" style="margin-top:var(--sp-10);font-size:var(--fs-14)">${order.rejectReason || (cancelled ? 'Вы отменили заказ до того, как его приняли в работу.' : 'Ресторан не смог принять заказ в работу.')}</p>
     </div>
   </section>
 
   <section class="section">
     <div class="card">
       <h2 class="h2">Что с деньгами</h2>
-      <p class="soft small" style="margin-top:8px">${cancelled
+      <p class="soft small" style="margin-top:var(--sp-8)">${cancelled
         ? 'Оплата не списывалась. Если средства заблокированы, они разблокируются автоматически в течение 1–3 рабочих дней.'
         : 'Оплата не списывалась. Если средства заблокированы, они разблокируются автоматически в течение 1–3 рабочих дней.'}</p>
       <div class="sum-row is-total"><span class="lbl">Возврат</span><span class="val">${fmt(order.total)}</span></div>
-      ${order.bonusRefunded ? `<p class="ok" style="margin-top:10px">${order.bonus} ${plural(order.bonus,'балл','балла','баллов')} возвращено на бонусный счёт.</p>` : ''}
-      <p class="muted small" style="margin-top:8px">Если возврат не пришёл за 3 дня — напишите в поддержку, разберём заказ вручную.</p>
+      ${order.bonusRefunded ? `<p class="ok" style="margin-top:var(--sp-10)">${order.bonus} ${plural(order.bonus,'балл','балла','баллов')} возвращено на бонусный счёт.</p>` : ''}
+      <p class="muted small" style="margin-top:var(--sp-8)">Если возврат не пришёл за 3 дня — напишите в поддержку, разберём заказ вручную.</p>
     </div>
   </section>
 
   <section class="section">
     <div class="card">
       <h2 class="h2">Состав заказа</h2>
-      <div style="margin-top:10px">
+      <div style="margin-top:var(--sp-10)">
         ${order.items.map(i => `<div class="sum-row"><span>${i.name} × ${i.qty}</span><span class="val">${fmt(i.price*i.qty)}</span></div>`).join('')}
         <div class="sum-row is-total"><span class="lbl">Итого</span><span class="val">${fmt(order.total)}</span></div>
       </div>
@@ -1189,7 +1223,7 @@ function scrStatusRejected(order){
   <section class="section">
     <div class="row gap-10">
       <button class="btn-lime grow" data-act="repeat-order" data-id="${order.id}"><span>Повторить заказ</span>${icon('arrowRight')}</button>
-      <button class="btn-outline grow" data-act="go" data-screen="catalog" style="border-radius:999px;padding:13px 16px">В меню</button>
+      <button class="btn-outline grow" data-act="go" data-screen="catalog" style="border-radius:999px;padding:var(--sp-12) var(--sp-16)">В меню</button>
     </div>
   </section>`;
 }
@@ -1198,14 +1232,14 @@ function scrOrders(){
   const orders = state.orders;
   return `
   ${appHeader()}
-  <section class="section" style="padding-top:4px">
+  <section class="section" style="padding-top:var(--sp-4)">
     <h1 class="h1">Ваши заказы</h1>
   </section>
   <section class="section">
     <div class="panel-olive">
       <div class="eyebrow">ВАСАБИ / ВАШИ ВЕЧЕРА</div>
-      <div style="font-size:24px;font-weight:700;margin-top:10px">${orders.length} в истории</div>
-      <p class="soft small" style="margin-top:6px">До 200 последних заказов вашего аккаунта · Cloud</p>
+      <div style="font-size:var(--fs-24);font-weight:700;margin-top:var(--sp-10)">${orders.length} в истории</div>
+      <p class="soft small" style="margin-top:var(--sp-6)">До 200 последних заказов вашего аккаунта · Cloud</p>
     </div>
   </section>
   <section class="section">
@@ -1226,7 +1260,7 @@ function scrOrders(){
         <div class="order-line">${o.items.map(i => `${i.name} × ${i.qty}`).join(', ')}</div>
         <div class="order-addr">${icon(o.deliveryType === 'table' ? 'utensils' : 'pin')} ${o.address}</div>
         <div class="order-addr">${icon('clock')} ${o.slot ? slotFull(o.slot) : (o.deliveryType === 'table' ? `К столу ${o.tableNo} — ${RULES.prepTable}` : (o.deliveryType === 'pickup' ? 'Самовывоз' : 'Доставка как можно скорее'))}</div>
-        <div class="row gap-10" style="margin-top:14px">
+        <div class="row gap-10" style="margin-top:var(--sp-14)">
           <button class="btn-outline" data-act="open-order" data-id="${o.id}">Подробнее</button>
           <button class="btn-outline" data-act="repeat-order" data-id="${o.id}">Повторить заказ</button>
         </div>
@@ -1239,7 +1273,7 @@ function scrProfile(){
   const history = bonusHistory();
   return `
   ${appHeader()}
-  <section class="section" style="padding-top:4px">
+  <section class="section" style="padding-top:var(--sp-4)">
     <h1 class="h1">Личный кабинет</h1>
   </section>
   <section class="section">
@@ -1257,11 +1291,11 @@ function scrProfile(){
         <h2 class="h2">Бонусы «Васаби»</h2>
         <span style="color:var(--lime)">${icon('gift')}</span>
       </div>
-      <p class="muted small" style="margin-top:4px">Кэшбэк с заказов · 1 балл = 1 ₽</p>
+      <p class="muted small" style="margin-top:var(--sp-4)">Кэшбэк с заказов · 1 балл = 1 ₽</p>
       <div class="bonus-balance"><b>${balance}</b><span>${plural(balance,'балл','балла','баллов')}</span></div>
       ${RULES.bonusEnabled
-        ? `<p class="muted small" style="margin-top:10px">Возвращаем ${RULES.bonusAccrual}% от суммы блюд после промокода. Баллами можно оплатить до ${RULES.bonusMaxPay}% следующего заказа. ${bonusExpiryMonths() ? `Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')} после начисления.` : 'Баллы не сгорают.'}</p>`
-        : '<p class="muted small" style="margin-top:10px">Программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
+        ? `<p class="muted small" style="margin-top:var(--sp-10)">Возвращаем ${RULES.bonusAccrual}% от суммы блюд после промокода. Баллами можно оплатить до ${RULES.bonusMaxPay}% следующего заказа. ${bonusExpiryMonths() ? `Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')} после начисления.` : 'Баллы не сгорают.'}</p>`
+        : '<p class="muted small" style="margin-top:var(--sp-10)">Программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
       <div class="bonus-history">
         ${history.length ? history.slice(0,3).map(entry => `
           <div class="sum-row">
@@ -1269,7 +1303,7 @@ function scrProfile(){
             <span class="val ${entry.amount>0?'free-tag':''}">${entry.amount>0?'+':'−'}${Math.abs(entry.amount)}</span>
           </div>`).join('') : `<p class="muted small">${icon('clock')} Здесь появятся начисления и списания.</p>`}
       </div>
-      <p class="muted small" style="margin-top:12px">Демо-баланс в этой вкладке, без синхронизации с iiko. После перезагрузки вернутся исходные данные.</p>
+      <p class="muted small" style="margin-top:var(--sp-12)">Демо-баланс в этой вкладке, без синхронизации с iiko. После перезагрузки вернутся исходные данные.</p>
     </div>
   </section>
   <section class="section">
@@ -1277,11 +1311,11 @@ function scrProfile(){
       <div class="row between">
         <div>
           <h2 class="h2">История заказов</h2>
-          <p class="muted small" style="margin-top:4px">${state.orders.length} в истории (до 200 последних) · Cloud</p>
+          <p class="muted small" style="margin-top:var(--sp-4)">${state.orders.length} в истории (до 200 последних) · Cloud</p>
         </div>
         <span style="color:var(--lime)">${icon('receipt')}</span>
       </div>
-      <button class="link-line" data-act="go" data-screen="orders" style="margin-top:10px">${icon('arrowRight')} Посмотреть заказы</button>
+      <button class="link-line" data-act="go" data-screen="orders" style="margin-top:var(--sp-10)">${icon('arrowRight')} Посмотреть заказы</button>
     </div>
   </section>
   <section class="section">
@@ -1289,19 +1323,19 @@ function scrProfile(){
       <div class="row between">
         <div>
           <h2 class="h2">Избранное</h2>
-          <p class="muted small" style="margin-top:4px">${state.favorites.length} ${plural(state.favorites.length,'блюдо','блюда','блюд')} · повторный заказ в один тап</p>
+          <p class="muted small" style="margin-top:var(--sp-4)">${state.favorites.length} ${plural(state.favorites.length,'блюдо','блюда','блюд')} · повторный заказ в один тап</p>
         </div>
         <span style="color:var(--lime)">${icon('heart')}</span>
       </div>
-      <button class="link-line" data-act="go" data-screen="favorites" style="margin-top:10px">${icon('arrowRight')} Открыть избранное</button>
+      <button class="link-line" data-act="go" data-screen="favorites" style="margin-top:var(--sp-10)">${icon('arrowRight')} Открыть избранное</button>
     </div>
   </section>
   <section class="section">
-    <h2 class="h2" style="margin-bottom:14px">Адресная книга</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-14)">Адресная книга</h2>
     ${addressBook()}
   </section>
   <section class="section">
-    <h2 class="h2" style="margin-bottom:14px">Контакты для доставки</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-14)">Контакты для доставки</h2>
     <div class="field">
       <label for="pName">Имя</label>
       <input id="pName" data-act="f" data-field="name" value="${state.user.name}"
@@ -1321,23 +1355,23 @@ function scrProfile(){
     <button class="btn-lime" data-act="save-contacts"><span>Сохранить контакты</span>${icon('arrowRight')}</button>
   </section>
   <section class="section">
-    <h2 class="h2" style="margin-bottom:12px">Доступ сотрудника</h2>
+    <h2 class="h2" style="margin-bottom:var(--sp-12)">Доступ сотрудника</h2>
     <div class="card">
       <p class="small soft">Сотрудник открывает «Профиль» → «Доступ сотрудника». В прототипе можно выбрать демо-пользователя и посмотреть панель от его имени.</p>
-      <div class="field" style="margin-top:14px">
+      <div class="field" style="margin-top:var(--sp-14)">
         <label for="staffUser">Демо-сотрудник</label>
         <select id="staffUser" data-act="f" data-field="staffId">
           ${ADMIN_STAFF.map(s => `<option value="${s.id}" ${state.staffId===s.id?'selected':''}>${esc(s.name)} · ${esc(roleLabel(s.role))}</option>`).join('')}
         </select>
       </div>
-      <button class="btn-outline" style="margin-top:14px" data-act="mode" data-mode="admin">Открыть демо-панель</button>
-      <p class="hint" style="margin-top:10px">Без SMS и пароля. Список и роли задаются в админке → «Настройки». Настоящие приглашения и ограничение прав появятся только с серверной авторизацией.</p>
+      <button class="btn-outline" style="margin-top:var(--sp-14)" data-act="mode" data-mode="admin">Открыть демо-панель</button>
+      <p class="hint" style="margin-top:var(--sp-10)">Без SMS и пароля. Список и роли задаются в админке → «Настройки». Настоящие приглашения и ограничение прав появятся только с серверной авторизацией.</p>
     </div>
   </section>
   <section class="section">
     <div class="row gap-10">
-      <button class="btn-outline grow" data-act="go" data-screen="restaurant" style="border-radius:999px;padding:13px 16px">${icon('pin')} О ресторане</button>
-      <button class="btn-outline grow" data-act="go" data-screen="promos" style="border-radius:999px;padding:13px 16px">${icon('tag')} Акции</button>
+      <button class="btn-outline grow" data-act="go" data-screen="restaurant" style="border-radius:999px;padding:var(--sp-12) var(--sp-16)">${icon('pin')} О ресторане</button>
+      <button class="btn-outline grow" data-act="go" data-screen="promos" style="border-radius:999px;padding:var(--sp-12) var(--sp-16)">${icon('tag')} Акции</button>
     </div>
   </section>`;
 }
@@ -1345,12 +1379,16 @@ function scrProfile(){
 function scrPromos(){
   const banners = activeBanners();
   const promos = activePromos();
+  /* У кода, у которого есть свой баннер, применение уже есть — на баннере.
+     Вторую кнопку в списке не показываем: у гостя один способ применить код. */
+  const inBanner = new Set(banners.filter(b=>b.kind==='promo' && b.code).map(b=>b.code));
+  const soloPromos = promos.filter(p=>!inBanner.has(p.code));
   return `
   ${appBar('Акции и новости')}
   <section class="section">
     <div class="eyebrow">ВАСАБИ / АКЦИИ</div>
-    <h1 class="h1" style="margin-top:10px">Свежие поводы заказать</h1>
-    <div class="muted small" style="margin-top:6px">${banners.length} ${plural(banners.length,'акция','акции','акций')} · ${promos.length} ${plural(promos.length,'промокод','промокода','промокодов')}</div>
+    <h1 class="h1" style="margin-top:var(--sp-10)">Свежие поводы заказать</h1>
+    <div class="muted small" style="margin-top:var(--sp-6)">${banners.length} ${plural(banners.length,'акция','акции','акций')} · ${promos.length} ${plural(promos.length,'промокод','промокода','промокодов')}</div>
   </section>
   ${banners.map(b => `
     <section class="section">
@@ -1359,15 +1397,15 @@ function scrPromos(){
         <div class="promo-full-body">
           <span class="promo-tag promo-tag-in">${b.tag}</span>
           <h2 class="h2">${b.title}</h2>
-          <p class="muted small" style="margin-top:6px">${b.sub}</p>
+          <p class="muted small" style="margin-top:var(--sp-6)">${b.sub}</p>
           <button class="promo-cta" type="button" data-act="open-banner" data-banner="${b.id}">${b.cta}${icon('arrowRight')}</button>
         </div>
       </div>
     </section>`).join('')}
   <section class="section">
-    <h2 class="h2" style="margin-bottom:12px">Промокоды</h2>
-    ${promos.map(p => `
-      <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:14px">
+    <h2 class="h2" style="margin-bottom:var(--sp-12)">Промокоды</h2>
+    ${soloPromos.map(p => `
+      <div class="card" style="margin-bottom:var(--sp-10);display:flex;align-items:center;gap:var(--sp-14)">
         <div class="pay-icon">${icon('tag')}</div>
         <div class="grow">
           <div class="pay-name">${p.code}</div>
@@ -1375,6 +1413,9 @@ function scrPromos(){
         </div>
         <button class="btn-outline" data-act="copy-promo" data-code="${p.code}">Применить</button>
       </div>`).join('')}
+    <p class="muted small" style="margin-top:var(--sp-12)">${soloPromos.length
+      ? 'Код из акции можно и ввести вручную — на экране оплаты.'
+      : 'Коды из акций выше применяются кнопкой на баннере. Любой код можно ввести вручную на экране оплаты.'}</p>
   </section>`;
 }
 
@@ -1383,32 +1424,33 @@ function scrRestaurant(){
   ${appBar('О ресторане')}
   <section class="section">
     <div class="eyebrow">ВАСАБИ / МЕСТА</div>
-    <h1 class="h1" style="margin-top:10px">${LOCATIONS.length} ${plural(LOCATIONS.length,'адрес','адреса','адресов')} в городе</h1>
-    <p class="soft" style="margin-top:10px;font-size:14.5px">${BRAND.tagline}. Готовим после заказа и доставляем горячим.</p>
+    <h1 class="h1" style="margin-top:var(--sp-10)">${LOCATIONS.length} ${plural(LOCATIONS.length,'адрес','адреса','адресов')} в городе</h1>
+    <p class="soft" style="margin-top:var(--sp-10);font-size:var(--fs-14)">${BRAND.tagline}. Готовим после заказа и доставляем горячим.</p>
   </section>
   ${LOCATIONS.map(l => `
     <section class="section">
       <div class="card">
         <div class="row between">
           <div class="pay-name">${l.name}</div>
-          <span class="a-pill lime">${icon('clock')} ${l.hours}</span>
+          <span class="a-pill ${locIsOpen(l)?'lime':''}">${icon('clock')} ${l.hours}</span>
         </div>
-        <div class="order-addr" style="margin-top:10px">${icon('pin')} ${l.address}</div>
-        <div class="muted small" style="margin-top:8px">${l.delivery}</div>
+        <div class="order-addr" style="margin-top:var(--sp-10)">${icon('pin')} ${l.address}</div>
+        <div class="muted small" style="margin-top:var(--sp-8)">${l.delivery}</div>
+        <p class="small" style="margin-top:var(--sp-8);color:${locIsOpen(l) ? 'var(--lime)' : 'var(--muted)'}">${locStatusText(l)}</p>
       </div>
     </section>`).join('')}
   <section class="section">
     <div class="card">
-      <div class="row gap-10" style="margin-bottom:12px">${icon('phone')} <b>${BRAND.phone}</b></div>
+      <div class="row gap-10" style="margin-bottom:var(--sp-12)">${icon('phone')} <b>${BRAND.phone}</b></div>
       <p class="muted small">Поддержка работает ежедневно с 10:00 до 23:00. Среднее время ответа — 2 минуты.</p>
     </div>
   </section>
   <section class="section">
     <div class="card" style="text-align:center">
-      <div class="pay-icon" style="margin:0 auto 12px">${icon('qr')}</div>
+      <div class="pay-icon" style="margin:0 auto var(--sp-12)">${icon('qr')}</div>
       <h2 class="h2">QR-меню в зале</h2>
-      <p class="muted small" style="margin-top:6px">Отдельный канал заказа с QR-кода на столе: без регистрации; бонусный счёт к такому заказу не привязывается.</p>
-      <button class="btn-outline" style="margin-top:14px" data-act="open-qr-menu"><span>Открыть QR-меню</span>${icon('arrowRight')}</button>
+      <p class="muted small" style="margin-top:var(--sp-6)">Отдельный канал заказа с QR-кода на столе: без регистрации; бонусный счёт к такому заказу не привязывается.</p>
+      <button class="btn-outline" style="margin-top:var(--sp-14)" data-act="open-qr-menu"><span>Открыть QR-меню</span>${icon('arrowRight')}</button>
     </div>
   </section>`;
 }
@@ -1421,13 +1463,13 @@ function scrQrMenu(){
   const list = DISHES.filter(d => (state.qrCat === 'all' || d.cat === state.qrCat) && dishAvailable(d));
   return `
   ${appBar('QR-меню')}
-  <section class="section" style="padding-top:4px">
+  <section class="section" style="padding-top:var(--sp-4)">
     <div class="table-card">
       <div class="row between">
         <div>
           <div class="eyebrow">ВЫ ЗАКАЗАЛИ В ЗАЛЕ</div>
-          <h1 class="h1" style="margin-top:8px">Стол ${table.no}</h1>
-          <div class="muted small" style="margin-top:6px">${loc.address} · ${loc.hours}</div>
+          <h1 class="h1" style="margin-top:var(--sp-8)">Стол ${table.no}</h1>
+          <div class="muted small" style="margin-top:var(--sp-6)">${loc.address} · ${loc.hours}</div>
         </div>
         <div class="table-mark">${icon('qr')}</div>
       </div>
@@ -1445,7 +1487,7 @@ function scrQrMenu(){
       </div>
     </div>
   </section>
-  <section class="section" style="margin-top:18px">
+  <section class="section" style="margin-top:var(--sp-18)">
     <div class="section-head">
       <h2 class="h2">${state.qrCat==='all'?'Всё меню':CATEGORIES.find(c=>c.id===state.qrCat).name}</h2>
       <span class="count">${list.length} ${plural(list.length,'блюдо','блюда','блюд')}</span>
@@ -1461,19 +1503,21 @@ function scrQrMenu(){
 function scrOnboarding(){
   if (state.authStep === 'phone'){
     return `
-    <section class="section" style="padding-top:44px">
+    <section class="section" style="padding-top:var(--sp-48)">
       <div class="row gap-10">
         <span class="logo-mark">${icon('leaf')}</span>
         <div class="wordmark">васаби<span class="dot">.</span></div>
       </div>
-      <h1 class="h1" style="margin-top:32px">Вкусный вечер начинается здесь</h1>
-      <p class="soft" style="margin-top:12px;font-size:15px">Войдите по номеру телефона — SMS-код придёт за секунду.</p>
+      <h1 class="h1" style="margin-top:var(--sp-32)">Вкусный вечер начинается здесь</h1>
+      <p class="soft" style="margin-top:var(--sp-12);font-size:var(--fs-16)">Войдите по номеру телефона — SMS-код придёт за секунду.</p>
     </section>
-    <section class="section" style="margin-top:26px">
+    <section class="section" style="margin-top:var(--sp-28)">
       <div class="field">
         <label for="authPhone">Номер телефона</label>
-        <input id="authPhone" type="tel" placeholder="+7 900 000-00-00" value="${state.user.phone}"
-          autocomplete="tel" inputmode="tel" enterkeyhint="next">
+        <input id="authPhone" type="tel" data-act="f" data-field="authPhone" placeholder="+7 900 000-00-00" value="${state.authPhone}"
+          autocomplete="tel" inputmode="tel" enterkeyhint="next"
+          ${state.authErr ? 'aria-invalid="true" aria-describedby="err-authPhone"' : ''}>
+        ${state.authErr ? `<p class="err" id="err-authPhone" role="alert">${state.authErr}</p>` : ''}
       </div>
       <button class="btn-lime" data-act="auth-phone"><span>Получить код</span>${icon('arrowRight')}</button>
     </section>
@@ -1483,19 +1527,24 @@ function scrOnboarding(){
       </div>
     </section>`;
   }
+  const digits = String(state.authCodeInput || state.authCode).split('');
   return `
   ${appBar('Подтверждение')}
-  <section class="section" style="padding-top:18px">
+  <section class="section" style="padding-top:var(--sp-18)">
     <div class="eyebrow">КОД ИЗ SMS</div>
-    <h1 class="h1" style="margin-top:10px">Введите код</h1>
-    <p class="soft" style="margin-top:10px;font-size:14.5px">Отправили код на ${state.user.phone}</p>
+    <h1 class="h1" style="margin-top:var(--sp-10)">Введите код</h1>
+    <p class="soft" style="margin-top:var(--sp-10);font-size:var(--fs-14)">Код для номера ${state.authPhone || 'без номера'}</p>
   </section>
   <section class="section">
     <div class="code-input">
-      <input maxlength="1" value="1" inputmode="numeric" autocomplete="one-time-code" aria-label="Цифра 1"><input maxlength="1" value="2" inputmode="numeric" autocomplete="off" aria-label="Цифра 2"><input maxlength="1" value="3" inputmode="numeric" autocomplete="off" aria-label="Цифра 3"><input maxlength="1" value="4" inputmode="numeric" autocomplete="off" aria-label="Цифра 4">
+      ${[0,1,2,3].map(i => `<input maxlength="1" value="${digits[i] || ''}" inputmode="numeric" autocomplete="${i === 0 ? 'one-time-code' : 'off'}" aria-label="Цифра ${i+1}" data-act="f" data-field="authCode" data-index="${i}" ${state.authCodeErr ? 'aria-invalid="true" aria-describedby="err-authCode"' : ''}>`).join('')}
     </div>
-    <button class="btn-lime" style="margin-top:20px" data-act="auth-code"><span>Войти</span>${icon('arrowRight')}</button>
-    <button class="btn-outline" style="margin-top:14px;width:100%" data-act="auth-resend">Отправить код ещё раз</button>
+    ${state.authCodeErr ? `<p class="err" id="err-authCode" role="alert" style="margin-top:var(--sp-12)">${state.authCodeErr}</p>` : ''}
+    <button class="btn-lime" style="margin-top:var(--sp-20)" data-act="auth-code"><span>Войти</span>${icon('arrowRight')}</button>
+    <button class="btn-outline" style="margin-top:var(--sp-14);width:100%" data-act="auth-resend">Отправить код ещё раз</button>
+  </section>
+  <section class="section">
+    <div class="notice">${icon('info')}<span>Это прототип: SMS не отправляется. Код для входа — ${state.authCode}.</span></div>
   </section>`;
 }
 
@@ -1617,6 +1666,7 @@ const FEATURE_GROUPS = [
     'Избранное: сердечко в карточке, добавление всех блюд в корзину',
     'Корзина: степперы, минимальный заказ, допродажи к заказу',
     'Оформление: доставка / самовывоз, адресная книга, слоты времени, способ оплаты',
+    'Часы работы: статус точки и заказ на завтра, если ресторан закрыт',
     'Оплата: подтверждение заказа, промокод и бонусы, карта / СБП / Apple Pay / наличные',
     'Статус заказа: таймлайн, отмена, экран отказа с возвратом',
     'Мои заказы: история заказов и их статусы',
@@ -1624,7 +1674,7 @@ const FEATURE_GROUPS = [
     'Акции: карусель на главной, тап = промокод или блюдо',
     'QR-меню на столе: заказ к столу без регистрации, оплата у стола',
     'Профиль: бонусы, контакты, адресная книга, история заказов, доступ сотрудника',
-    'Вход по SMS: экран с кодом есть, но гость попадает на него только из списка экранов'
+    'Вход по SMS: номер проверяется, неверный код даёт ошибку и повторную отправку; экран открывается из списка экранов'
   ]},
   { title:'Админ-панель', items:[
     'Меню: создание и правка блюда, метки и скидки, своё фото, стоп-лист, CSV-импорт',
@@ -1809,11 +1859,17 @@ const ACTIONS = {
     state.slot = null;
     if (state.deliveryType === 'table') state.payMethod = 'table';
     else if (state.payMethod === 'table') state.payMethod = 'card';
+    applyOpenHours();
     render();
   },
-  'pick-location': (el) => { state.locationId = el.dataset.id; state.slot = null; render(); },
+  'pick-location': (el) => { state.locationId = el.dataset.id; state.slot = null; applyOpenHours(); render(); },
   'pay-method': (el) => { state.payMethod = el.dataset.id; render(); },
   'time-mode': (el) => {
+    const loc = LOCATIONS.find(l => l.id === state.locationId) || LOCATIONS[0];
+    if (el.dataset.mode === 'asap' && !state.table && !locIsOpen(loc)){
+      toast('Сейчас закрыто — выберите время на завтра');
+      return;
+    }
     state.timeMode = el.dataset.mode;
     delete state.errors.slot;
     if (state.timeMode === 'asap'){ state.slot = null; }
@@ -1868,6 +1924,8 @@ const ACTIONS = {
       if (!state.address.trim()) errs.address = 'Укажите адрес';
     }
     if (!table && state.timeMode === 'slot' && !state.slot) errs.slot = 'Выберите время доставки';
+    const loc = LOCATIONS.find(l => l.id === state.locationId) || LOCATIONS[0];
+    if (!table && !locIsOpen(loc) && !state.slot) errs.slot = 'Сейчас закрыто — выберите время на завтра';
     state.errors = errs;
     if (Object.keys(errs).length){ render(); focusFirstError(); toast('Проверьте заполненные поля'); return; }
     go('payment');
@@ -1950,13 +2008,50 @@ const ACTIONS = {
   'refresh-orders': () => { toast('История обновлена'); render(); },
   'save-contacts': () => { toast('Контакты сохранены'); render(); },
   'advance-status': () => { state.autoStatus = false; advanceStatus(); },
-  'auth-phone': () => { state.authStep = 'code'; render(); },
-  'auth-code': () => { state.authStep = 'phone'; toast('Вы вошли в аккаунт'); go('home'); },
-  'auth-resend': () => toast('Код отправлен повторно'),
+  'auth-phone': () => {
+    const raw = (state.authPhone || '').trim();
+    const digits = normPhone(raw);
+    if (!raw){ state.authErr = 'Введите номер телефона'; render(); focusFirstError(); return; }
+    if (digits.length !== 11 || digits[0] !== '7'){
+      state.authErr = 'Проверьте номер: 11 цифр, например +7 900 000-00-00';
+      render(); focusFirstError(); return;
+    }
+    state.authErr = '';
+    state.authCode = '1234';
+    state.authCodeInput = state.authCode;
+    state.authCodeErr = '';
+    state.authStep = 'code';
+    render();
+  },
+  'auth-code': () => {
+    const inputs = [...document.querySelectorAll('#viewport .code-input input')];
+    const entered = inputs.length
+      ? inputs.map(i => (i.value || '').trim()).join('')
+      : (state.authCodeInput || '').trim();
+    if (entered !== state.authCode){
+      state.authCodeErr = 'Неверный код. Проверьте цифры или запросите код ещё раз.';
+      render(); focusFirstError(); return;
+    }
+    state.authCodeErr = '';
+    state.user.phone = state.authPhone;
+    state.authStep = 'phone';
+    toast('Вы вошли в аккаунт');
+    go('home');
+  },
+  'auth-resend': () => {
+    state.authCode = String(Math.floor(1000 + Math.random() * 9000));
+    state.authCodeInput = state.authCode;
+    state.authCodeErr = '';
+    render();
+    toast('Новый демо-код: ' + state.authCode + '. SMS не отправляются — это прототип.');
+  },
   toast: (el) => toast(el.dataset.msg),
   reset: () => {
     state.cart = {}; state.orders = []; state.promo = null; state.bonusUse = 0;
     state.productMods = []; state.autoStatus = true; state.authStep = 'phone';
+    state.authPhone = '+7 900 000-00-01';
+    state.authCode = '1234'; state.authCodeInput = '1234';
+    state.authErr = ''; state.authCodeErr = '';
     state.favorites = ['d-phil'];
     state.addresses = [
       { id:'a1', label:'Дом',  address:'Москва, ул. Ташкентская, 19, кв. 42' },
@@ -1989,6 +2084,14 @@ function onInput(el){
   if (f === 'promoInput') state.promoInput = el.value;
   if (f === 'newAddress') state.newAddress = el.value;
   if (f === 'staffId') state.staffId = el.value;
+  if (f === 'authPhone') state.authPhone = el.value;
+  if (f === 'authCode'){
+    const inputs = [...document.querySelectorAll('#viewport .code-input input')];
+    state.authCodeInput = inputs.map(i => (i.value || '').trim()).join('');
+    const i = Number(el.dataset.index);
+    if (el.value && inputs[i + 1]) inputs[i + 1].focus();
+    else if (!el.value && inputs[i - 1]) inputs[i - 1].focus();
+  }
 }
 
 /* ------------------------------ обработчики ------------------------------ */
@@ -2020,6 +2123,13 @@ document.addEventListener('input', ev => {
     return;
   }
   onInput(el);
+});
+
+/* цифры кода приходят уже заполненными, поэтому по тапу цифра выделяется
+   целиком: следующая набранная заменяет её, а не дописывается */
+document.addEventListener('focusin', ev => {
+  const el = ev.target;
+  if (el && el.dataset && el.dataset.field === 'authCode' && el.select) el.select();
 });
 
 document.addEventListener('keydown', ev => {

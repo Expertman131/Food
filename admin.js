@@ -328,7 +328,7 @@ function renderAdminSide(){
   $('#adminSide').innerHTML = `
     <div class="aside-brand">
       <span class="logo-mark" style="width:34px;height:34px;border-radius:11px">${icon('leaf')}</span>
-      <span class="wordmark" style="font-size:19px">васаби<span class="dot">.</span></span>
+      <span class="wordmark" style="font-size:var(--fs-18)">васаби<span class="dot">.</span></span>
     </div>
     <nav class="aside-nav" aria-label="Разделы панели">
       ${ADMIN_SECTIONS.map(s => `
@@ -392,12 +392,12 @@ function adminOrders(){
     <article class="a-order ${o.status==='new'?'is-new':''}">
       <div class="a-order-head">
         <div>
-          <div style="font-weight:700">№${o.no} ${o.deliveryType === 'table' ? `<span class="a-pill olive" style="margin-left:6px">${icon('qr')} QR · стол ${o.tableNo}</span>` : ''}</div>
-          <div class="muted" style="font-size:12px;margin-top:3px">${o.date}</div>
+          <div style="font-weight:700">№${o.no} ${o.deliveryType === 'table' ? `<span class="a-pill olive" style="margin-left:var(--sp-6)">${icon('qr')} QR · стол ${o.tableNo}</span>` : ''}</div>
+          <div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-4)">${o.date}</div>
         </div>
         <div style="text-align:right">
           <div style="font-weight:700;color:var(--lime)">${fmt(o.total)}</div>
-          <span class="a-pill ${o.status==='new'?'lime':(DEAD_STATUSES.includes(o.status)?'red':'olive')}" style="margin-top:6px">${statusLabel(o)}</span>
+          <span class="a-pill ${o.status==='new'?'lime':(DEAD_STATUSES.includes(o.status)?'red':'olive')}" style="margin-top:var(--sp-6)">${statusLabel(o)}</span>
         </div>
       </div>
       <div class="a-order-items">${o.items.map(i => `${i.name} × ${i.qty}`).join('<br>')}</div>
@@ -415,10 +415,10 @@ function adminOrders(){
     </article>`).join('')}</div>`
   : `<div class="a-panel" style="text-align:center;color:var(--muted)">В этой вкладке пусто</div>`}
 
-  <div class="a-panel" style="margin-top:16px">
+  <div class="a-panel" style="margin-top:var(--sp-16)">
     <h2>Передача в iikoDelivery</h2>
     <p class="a-lead">Автоматическая передача заказа в iikoDelivery, печать на кухню в iikoKitchen и фискализация в iikoCash. Требуется лицензия iikoDelivery + iikoKitchen и API-ключи тестового стенда.</p>
-    <div class="a-row" style="margin-top:12px">
+    <div class="a-row" style="margin-top:var(--sp-12)">
       <span class="a-pill warn">${icon('info')} Не подключено</span>
       <button class="a-btn" data-act="admin-toast" data-msg="Заявка на подключение iiko отправлена подрядчику">Заказать подключение</button>
     </div>
@@ -435,7 +435,7 @@ function adminMenu(){
   const stopped = list.length - active;
   const ownPhoto = !!admin.dishDraft.img && !DISH_IMAGES.includes(admin.dishDraft.img);
   return `
-  <div class="a-panel" id="dishForm" style="margin-bottom:18px">
+  <div class="a-panel" id="dishForm" style="margin-bottom:var(--sp-18)">
     <h2>${admin.dishDraft.id ? 'Редактирование блюда' : 'Добавить блюдо в меню'}</h2>
     <p class="a-lead">Здесь управляются карточка и цена гостя. «Хит» или «Выбор шефа» — обычная метка; скидка в процентах уменьшает цену и показывает старую зачёркнутой.</p>
     <div class="a-grid dish-fields">
@@ -460,7 +460,7 @@ function adminMenu(){
       <div class="a-photo-fields">
         <label class="a-photo-title" for="dishPhoto">Фото блюда — загрузить своё</label>
         <input type="file" id="dishPhoto" class="a-file" accept="image/*" data-act="admin-dish-photo">
-        <div class="muted" style="font-size:12px">Лучше квадратный снимок от 900 × 900 px. Фото с телефона ужмётся до 900 px по ширине и появится в предпросмотре.</div>
+        <div class="muted" style="font-size:var(--fs-12)">Лучше квадратный снимок от 900 × 900 px. Фото с телефона ужмётся до 900 px по ширине и появится в предпросмотре.</div>
         ${ownPhoto ? '<button class="a-btn" data-act="admin-dish-photo-reset">Вернуть прежнее фото</button>' : ''}
         <details class="a-stock">
           <summary>Нет своего фото? Выбрать демо-изображение</summary>
@@ -471,11 +471,11 @@ function adminMenu(){
         </details>
       </div>
     </div>
-    <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
+    <div class="a-grid a-grid-2" style="gap:var(--sp-10);margin-top:var(--sp-10)">
       <textarea class="input-plain" id="dish-desc" rows="2" aria-label="Описание блюда" data-act="admin-dish-draft" data-field="desc" placeholder="Описание для гостя">${admin.dishDraft.desc}</textarea>
       <textarea class="input-plain" id="dish-composition" rows="2" aria-label="Состав блюда" data-act="admin-dish-draft" data-field="composition" placeholder="Состав: рис, лосось, соевый соус…">${admin.dishDraft.composition}</textarea>
     </div>
-    <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px;align-items:end">
+    <div class="a-grid a-grid-2" style="gap:var(--sp-10);margin-top:var(--sp-10);align-items:end">
       <input class="input-plain" id="dish-allergens" aria-label="Аллергены через запятую" data-act="admin-dish-draft" data-field="allergens" placeholder="Аллергены через запятую: рыба, соя, молоко" value="${admin.dishDraft.allergens}">
       <button class="switch-row" role="switch" aria-checked="${admin.dishDraft.popular?'true':'false'}" data-act="admin-dish-popular">
         <span>Показывать на главной</span><span class="opt-toggle ${admin.dishDraft.popular?'is-on':''}" aria-hidden="true"></span>
@@ -493,43 +493,43 @@ function adminMenu(){
       <p class="a-lead">В Excel сохраните лист как «CSV UTF-8» с разделителем «;» или скачайте готовый шаблон. Дубликаты сверяются по названию: существующее блюдо обновится, новое добавится.</p>
       <p class="a-form-note">Колонки: <code>Название;Категория;Цена;Скидка %;Вес;Метка;Описание;Состав;Аллергены;На главной</code>. Категорию можно указать кодом (<code>rolls</code>, <code>hot</code>) или названием («Роллы», «Горячее»). В последней колонке — «да» или «нет». Состав и аллергены пишутся через запятую внутри своей ячейки.</p>
       <p class="a-form-note">Фото и модификаторы файл не переносит: новые позиции получат демо-фото по категории, после импорта загрузите свои снимки через редактирование. Это файловый импорт, а не прямая синхронизация с Foodpicasso или iiko.</p>
-      <div class="a-row" style="margin-top:12px">
+      <div class="a-row" style="margin-top:var(--sp-12)">
         <input type="file" class="a-file" accept=".csv,text/csv,text/plain" aria-label="Выбрать CSV-файл с меню" data-act="admin-menu-import-file">
         <button class="a-btn" data-act="admin-menu-template">Скачать шаблон CSV</button>
       </div>
-      <textarea class="input-plain" id="menuImportText" rows="4" style="margin-top:10px" aria-label="Данные меню, можно вставить текстом" data-act="admin-menu-import-text" placeholder="Название;Категория;Цена;Скидка %;Вес;Метка;Описание;Состав;Аллергены;На главной">${esc(admin.menuImport.text)}</textarea>
-      <div class="a-row" style="margin-top:12px">
+      <textarea class="input-plain" id="menuImportText" rows="4" style="margin-top:var(--sp-10)" aria-label="Данные меню, можно вставить текстом" data-act="admin-menu-import-text" placeholder="Название;Категория;Цена;Скидка %;Вес;Метка;Описание;Состав;Аллергены;На главной">${esc(admin.menuImport.text)}</textarea>
+      <div class="a-row" style="margin-top:var(--sp-12)">
         <button class="a-btn" data-act="admin-menu-import-check">Проверить меню</button>
         ${admin.menuImport.rows && admin.menuImport.rows.length ? `<button class="a-btn primary" id="menuImportApply" data-act="admin-menu-import-apply">Импортировать ${admin.menuImport.rows.length} ${plural(admin.menuImport.rows.length,'позицию','позиции','позиций')}</button>` : ''}
       </div>
       ${admin.menuImport.rows ? `
-        <div style="margin-top:14px" id="menuImportPreview">
-          <div class="muted" style="font-size:12.5px;margin-bottom:8px">Добавим: ${admin.menuImport.rows.filter(r => !r.duplicate).length}. Обновим по названию: ${admin.menuImport.rows.filter(r => r.duplicate).length}. ${admin.menuImport.errors.length ? `Строк с ошибками: ${admin.menuImport.errors.length} — они не попадут в меню.` : ''}</div>
+        <div style="margin-top:var(--sp-14)" id="menuImportPreview">
+          <div class="muted" style="font-size:var(--fs-12);margin-bottom:var(--sp-8)">Добавим: ${admin.menuImport.rows.filter(r => !r.duplicate).length}. Обновим по названию: ${admin.menuImport.rows.filter(r => r.duplicate).length}. ${admin.menuImport.errors.length ? `Строк с ошибками: ${admin.menuImport.errors.length} — они не попадут в меню.` : ''}</div>
           <table class="a-table a-table-menu-import">
             <thead><tr><th scope="col">Блюдо</th><th scope="col">Категория</th><th scope="col">Цена</th><th scope="col">Скидка</th><th scope="col">На главной</th><th scope="col">Действие</th></tr></thead>
             <tbody>${admin.menuImport.rows.map(r => `
-              <tr><td><b>${esc(r.name)}</b><div class="muted" style="font-size:11.5px">${esc(r.unit)}</div></td><td>${esc(CATEGORIES.find(c => c.id===r.cat).name)}</td><td>${fmt(r.price)}</td><td>${r.salePercent ? '−'+r.salePercent+'%' : '—'}</td><td>${r.popular?'Да':'Нет'}${r.warning?`<div class="muted" style="font-size:11.5px">${esc(r.warning)}</div>`:''}</td><td><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'обновим':'добавим'}</span></td></tr>`).join('')}</tbody>
+              <tr><td><b>${esc(r.name)}</b><div class="muted" style="font-size:var(--fs-11)">${esc(r.unit)}</div></td><td>${esc(CATEGORIES.find(c => c.id===r.cat).name)}</td><td>${fmt(r.price)}</td><td>${r.salePercent ? '−'+r.salePercent+'%' : '—'}</td><td>${r.popular?'Да':'Нет'}${r.warning?`<div class="muted" style="font-size:var(--fs-11)">${esc(r.warning)}</div>`:''}</td><td><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'обновим':'добавим'}</span></td></tr>`).join('')}</tbody>
           </table>
           <div class="a-cards">${admin.menuImport.rows.map(r => `
             <article class="a-card a-card-col"><div class="a-card-body">
               <div class="a-card-title"><b>${esc(r.name)}</b><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'обновим':'добавим'}</span></div>
-              <div class="muted" style="font-size:12.5px">${esc(CATEGORIES.find(c => c.id===r.cat).name)} · ${fmt(r.price)}${r.salePercent?' · −'+r.salePercent+'%':''}</div>
-              <div class="muted" style="font-size:12px">${r.popular?'Покажем на главной':'Без ленты на главной'}${r.warning?' · '+esc(r.warning):''}</div>
+              <div class="muted" style="font-size:var(--fs-12)">${esc(CATEGORIES.find(c => c.id===r.cat).name)} · ${fmt(r.price)}${r.salePercent?' · −'+r.salePercent+'%':''}</div>
+              <div class="muted" style="font-size:var(--fs-12)">${r.popular?'Покажем на главной':'Без ленты на главной'}${r.warning?' · '+esc(r.warning):''}</div>
             </div></article>`).join('')}</div>
           ${admin.menuImport.errors.length ? `<div class="a-form-error">Не разобрано строк: ${admin.menuImport.errors.length} — ${admin.menuImport.errors.slice(0,4).map(esc).join('; ')}${admin.menuImport.errors.length>4?'…':''}</div>` : ''}
         </div>` : ''}
     </div>
   </details>
 
-  <div class="a-grid a-grid-4" style="margin-bottom:18px;margin-top:18px">
+  <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18);margin-top:var(--sp-18)">
     <div class="a-stat"><div class="lbl">Позиций в меню</div><div class="val">${list.length}</div><div class="delta">${cats.length} категорий</div></div>
     <div class="a-stat"><div class="lbl">Активных</div><div class="val lime">${active}</div><div class="delta">${stopped} в стоп-листе</div></div>
     <div class="a-stat"><div class="lbl">Средняя цена</div><div class="val">${fmt(list.reduce((s,d)=>s+dishPrice(d),0)/list.length)}</div><div class="delta">с учётом скидок</div></div>
-    <div class="a-stat"><div class="lbl">Синхронизация с iiko</div><div class="val" style="font-size:18px;color:#F0B45A">Не настроена</div><div class="delta">Меню ведётся вручную</div></div>
+    <div class="a-stat"><div class="lbl">Синхронизация с iiko</div><div class="val" style="font-size:var(--fs-18);color:#F0B45A">Не настроена</div><div class="delta">Меню ведётся вручную</div></div>
   </div>
 
   <div class="a-panel">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-12);flex-wrap:wrap;margin-bottom:var(--sp-14)">
       <h2 style="margin-bottom:0">Блюда и цены</h2>
       <button class="a-btn primary" data-act="admin-dish-new">+ Добавить блюдо</button>
     </div>
@@ -539,10 +539,10 @@ function adminMenu(){
         ${list.map(d => `
           <tr class="${dishAvailable(d)?'':'is-stopped'}">
             <td><img class="thumb" src="${d.img}" alt=""></td>
-            <td><b>${d.name}</b>${d.badge?`<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(d.badge)}</div>`:''}</td>
+            <td><b>${d.name}</b>${d.badge?`<div class="muted" style="font-size:var(--fs-11);margin-top:var(--sp-2)">${esc(d.badge)}</div>`:''}</td>
             <td class="muted nw">${CATEGORIES.find(c=>c.id===d.cat).name}</td>
             <td class="muted nw">${d.unit}</td>
-            <td class="nw"><b>${fmt(dishPrice(d))}</b>${d.salePercent?`<div class="muted" style="font-size:11.5px"><s>${fmt(d.price)}</s> · −${d.salePercent}%</div>`:''}</td>
+            <td class="nw"><b>${fmt(dishPrice(d))}</b>${d.salePercent?`<div class="muted" style="font-size:var(--fs-11)"><s>${fmt(d.price)}</s> · −${d.salePercent}%</div>`:''}</td>
             <td class="nw">
               <button class="a-btn star ${d.popular?'is-on':''}" aria-pressed="${d.popular?'true':'false'}"
                 aria-label="${d.popular?'Убрать «'+d.name+'» с главной':'Показать «'+d.name+'» на главной'}"
@@ -565,7 +565,7 @@ function adminMenu(){
           <img class="a-card-thumb" src="${d.img}" alt="">
           <div class="a-card-body">
             <div class="a-card-title"><b>${d.name}</b>${d.badge?`<span class="muted">${esc(d.badge)}</span>`:''}</div>
-            <div class="muted" style="font-size:12.5px">${CATEGORIES.find(c=>c.id===d.cat).name} · ${d.unit}</div>
+            <div class="muted" style="font-size:var(--fs-12)">${CATEGORIES.find(c=>c.id===d.cat).name} · ${d.unit}</div>
             <div class="a-card-row">
               <b>${fmt(dishPrice(d))}</b>${d.salePercent?`<span class="muted"><s>${fmt(d.price)}</s> · −${d.salePercent}%</span>`:''}
               <span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span>
@@ -582,21 +582,21 @@ function adminMenu(){
     </div>
   </div>
 
-  <div class="a-panel" style="margin-top:16px">
+  <div class="a-panel" style="margin-top:var(--sp-16)">
     <h2>Лента «Попробуйте любимое» на главной</h2>
     <p class="a-lead">Отмеченные блюда гость видит на главной без прокрутки. Не больше ${RULES.featuredMax}: главная не должна превращаться в каталог.</p>
     ${featured.length ? featured.map(d => `
       <div class="sum-row">
-        <span class="row-star">${icon('star')}<span>${d.name}</span>${dishAvailable(d)?'':'<span class="a-pill red" style="margin-left:8px">в стоп-листе — гостю не виден</span>'}</span>
+        <span class="row-star">${icon('star')}<span>${d.name}</span>${dishAvailable(d)?'':'<span class="a-pill red" style="margin-left:var(--sp-8)">в стоп-листе — гостю не виден</span>'}</span>
         <span class="val">
-          <span class="muted" style="font-size:12px;margin-right:8px">${fmt(dishPrice(d))}</span>
+          <span class="muted" style="font-size:var(--fs-12);margin-right:var(--sp-8)">${fmt(dishPrice(d))}</span>
           <button class="a-btn" data-act="admin-featured" data-id="${d.id}" aria-label="Убрать «${d.name}» с главной">${icon('x')}</button>
         </span>
       </div>`).join('') : `<div class="sum-row"><span>Ничего не отмечено — лента на главной пустая</span><span class="val">0 из ${RULES.featuredMax}</span></div>`}
-    ${featured.length ? `<div class="sum-row" style="border-top:1px solid var(--line-soft);margin-top:8px;padding-top:10px"><span class="muted" style="font-size:12.5px">Занято мест в ленте</span><span class="val">${featured.length} из ${RULES.featuredMax}</span></div>` : ''}
+    ${featured.length ? `<div class="sum-row" style="border-top:1px solid var(--line-soft);margin-top:var(--sp-8);padding-top:var(--sp-10)"><span class="muted" style="font-size:var(--fs-12)">Занято мест в ленте</span><span class="val">${featured.length} из ${RULES.featuredMax}</span></div>` : ''}
   </div>
 
-  <div class="a-grid a-grid-3" style="margin-top:16px">
+  <div class="a-grid a-grid-3" style="margin-top:var(--sp-16)">
     <div class="a-panel"><h2>Категории</h2>
       ${cats.map(c=>`<div class="sum-row"><span>${c.name}</span><span class="val">${DISHES.filter(d=>d.cat===c.id).length}</span></div>`).join('')}
     </div>
@@ -664,25 +664,25 @@ function adminMarketing(){
   const s = admin.settings;
   const ownBanner = !!admin.bannerDraft.img && !DISH_IMAGES.includes(admin.bannerDraft.img);
   return `
-  <div class="a-grid a-grid-4" style="margin-bottom:18px">
+  <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18)">
     <div class="a-stat"><div class="lbl">Активных промокодов</div><div class="val lime">${activePromos().length}</div><div class="delta">всего в базе: ${PROMOS.length}</div></div>
     <div class="a-stat"><div class="lbl">Начисление бонусов</div><div class="val">${admin.settings.bonusPercent}%</div><div class="delta">от суммы заказа</div></div>
     <div class="a-stat"><div class="lbl">Рассылок в демо-журнале</div><div class="val">${admin.pushLog.length}</div><div class="delta">реальная отправка не подключена</div></div>
     <div class="a-stat"><div class="lbl">Баннеров на главной</div><div class="val">${activeBanners().length}</div><div class="delta">всего заведено: ${BANNERS.length}</div></div>
   </div>
 
-  <div class="a-panel" id="bonusSettings" style="margin-bottom:16px">
-    <div class="row between" style="align-items:flex-start;gap:16px">
+  <div class="a-panel" id="bonusSettings" style="margin-bottom:var(--sp-16)">
+    <div class="row between" style="align-items:flex-start;gap:var(--sp-16)">
       <div>
         <h2>Бонусная система</h2>
-        <p class="a-lead-sm" style="margin-top:6px">Простой кэшбэк: 1 балл = 1 ₽. Без уровней и отдельных условий по блюдам.${s.bonusExpiryMonths ? ` Баллы сгорают через ${s.bonusExpiryMonths} ${plural(s.bonusExpiryMonths,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.'}</p>
+        <p class="a-lead-sm" style="margin-top:var(--sp-6)">Простой кэшбэк: 1 балл = 1 ₽. Без уровней и отдельных условий по блюдам.${s.bonusExpiryMonths ? ` Баллы сгорают через ${s.bonusExpiryMonths} ${plural(s.bonusExpiryMonths,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.'}</p>
       </div>
       <span class="a-pill ${s.bonusEnabled?'lime':'warn'}">${s.bonusEnabled?'Включена':'Выключена'}</span>
     </div>
     <button class="switch-row" role="switch" aria-checked="${!!s.bonusEnabled}" data-act="admin-toggle" data-key="bonusEnabled">
       <span>Начислять и списывать бонусы</span><span class="opt-toggle ${s.bonusEnabled?'is-on':''}" aria-hidden="true"></span>
     </button>
-    <div class="a-grid a-grid-3" style="gap:10px;margin-top:12px">
+    <div class="a-grid a-grid-3" style="gap:var(--sp-10);margin-top:var(--sp-12)">
       <label class="a-labeled"><span>Кэшбэк с заказа, %</span><input class="input-plain" id="bonusPercent" type="number" min="0" max="50" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusPercent" value="${s.bonusPercent}" ${s.bonusEnabled?'':'disabled'}></label>
       <label class="a-labeled"><span>Максимум оплаты баллами, %</span><input class="input-plain" id="bonusMaxPay" type="number" min="0" max="100" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusMaxPay" value="${s.bonusMaxPay}" ${s.bonusEnabled?'':'disabled'}></label>
       <label class="a-labeled"><span>Срок списания баллов, месяцев</span><input class="input-plain" id="bonusExpiryMonths" type="number" min="0" max="60" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusExpiryMonths" value="${s.bonusExpiryMonths}" ${s.bonusEnabled?'':'disabled'}></label>
@@ -691,7 +691,7 @@ function adminMarketing(){
     <p class="a-form-note">Кэшбэк считается от суммы блюд после промокода, без доставки. Списанные баллы возвращаются при отмене. Срок списания действует для новых начислений: уже начисленные баллы сохраняют свой срок. 0 месяцев — баллы не сгорают. Настройки применяются сразу и работают только в демо-вкладке; это не счёт iiko.</p>
   </div>
 
-  <div class="a-grid a-grid-split" style="margin-bottom:16px">
+  <div class="a-grid a-grid-split" style="margin-bottom:var(--sp-16)">
     <div class="a-panel">
       <h2>Промокоды</h2>
       <table class="a-table a-table-promos">
@@ -699,7 +699,7 @@ function adminMarketing(){
         <tbody>
           ${PROMOS.map(p => `
             <tr>
-              <td><b>${p.code}</b>${p.active?'':'<div class="muted" style="font-size:11.5px">выключен</div>'}</td>
+              <td><b>${p.code}</b>${p.active?'':'<div class="muted" style="font-size:var(--fs-11)">выключен</div>'}</td>
               <td class="muted nw">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная':'Доставка')}</td>
               <td class="nw">${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}</td>
               <td class="muted nw">${p.min?fmt(p.min):'—'}</td>
@@ -713,15 +713,15 @@ function adminMarketing(){
           <article class="a-card a-card-col">
             <div class="a-card-body">
               <div class="a-card-title"><b>${p.code}</b>${p.active?'':'<span class="a-pill warn">выключен</span>'}</div>
-              <div class="muted" style="font-size:12.5px">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная сумма':'Бесплатная доставка')} · ${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}${p.min?' · от '+fmt(p.min):''}</div>
-              <div class="muted" style="font-size:12.5px">Использований: ${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</div>
+              <div class="muted" style="font-size:var(--fs-12)">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная сумма':'Бесплатная доставка')} · ${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}${p.min?' · от '+fmt(p.min):''}</div>
+              <div class="muted" style="font-size:var(--fs-12)">Использований: ${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</div>
               <div class="a-row"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${p.code}">${p.active?'Отключить':'Включить'}</button></div>
             </div>
           </article>`).join('')}
       </div>
-      <h2 style="margin-top:20px">Новый промокод</h2>
+      <h2 style="margin-top:var(--sp-20)">Новый промокод</h2>
       <p class="a-lead-sm">Скидка на всю корзину: гость вводит код на оплате или нажимает на связанный баннер. Минимум 0 ₽ — без ограничения по сумме.</p>
-      <div class="a-grid a-grid-2" style="gap:10px">
+      <div class="a-grid a-grid-2" style="gap:var(--sp-10)">
         <label class="a-labeled"><span>Код для гостя</span><input class="input-plain" data-act="admin-draft" data-field="code" placeholder="AUTUMN25" value="${esc(admin.promoDraft.code)}"></label>
         <label class="a-labeled"><span>Что уменьшаем</span><select class="input-plain" data-act="admin-draft" data-field="type">
           <option value="percent" ${admin.promoDraft.type==='percent'?'selected':''}>Процент от заказа</option>
@@ -731,7 +731,7 @@ function adminMarketing(){
         <label class="a-labeled"><span>Размер скидки${admin.promoDraft.type==='percent'?', %':(admin.promoDraft.type==='fixed'?', ₽':'')}</span><input class="input-plain" id="promo-value" type="number" min="0" max="${admin.promoDraft.type==='percent'?'90':''}" inputmode="numeric" data-act="admin-draft" data-field="value" value="${admin.promoDraft.value}" ${admin.promoDraft.type==='delivery'?'disabled':''}></label>
         <label class="a-labeled"><span>Минимальный заказ, ₽</span><input class="input-plain" type="number" min="0" inputmode="numeric" data-act="admin-draft" data-field="min" value="${admin.promoDraft.min}"></label>
       </div>
-      <div class="a-row" style="margin-top:12px">
+      <div class="a-row" style="margin-top:var(--sp-12)">
         <button class="a-btn primary" data-act="admin-promo-create">Создать промокод</button>
         <button class="a-btn" data-act="admin-section" data-section="menu">Скидка на одно блюдо →</button>
       </div>
@@ -739,22 +739,22 @@ function adminMarketing(){
 
     <div class="a-panel">
       <h2>Карусель акций на главной</h2>
-      <div class="muted" style="font-size:12.5px;margin-bottom:12px">
+      <div class="muted" style="font-size:var(--fs-12);margin-bottom:var(--sp-12)">
         ${BANNERS.filter(b => b.active).length} из ${BANNERS.length} показываются гостю. Порядок ниже = порядок карточек в ленте, изменения видны сразу.
       </div>
       ${BANNERS.map((b, i) => `
-        <div class="a-order a-banner-row" style="margin-bottom:10px">
+        <div class="a-order a-banner-row" style="margin-bottom:var(--sp-10)">
           <img class="a-banner-thumb" src="${b.img}" alt="">
           <div class="a-banner-info">
-            <div class="row between" style="gap:10px">
+            <div class="row between" style="gap:var(--sp-10)">
               <div style="font-weight:700">${b.title}</div>
               <div class="row gap-6">
                 <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="-1" ${i===0?'disabled':''} aria-label="Выше">↑</button>
                 <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="1" ${i===BANNERS.length-1?'disabled':''} aria-label="Ниже">↓</button>
               </div>
             </div>
-            <div class="muted" style="font-size:12.5px;margin-top:4px"><span class="a-pill olive">Метка: ${b.tag}</span> ${bannerKind(b)} · ${b.sub}</div>
-            <div class="a-row" style="margin-top:10px">
+            <div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-4)"><span class="a-pill olive">Метка: ${b.tag}</span> ${bannerKind(b)} · ${b.sub}</div>
+            <div class="a-row" style="margin-top:var(--sp-10)">
               <span class="a-pill ${b.active?'lime':''}">${b.active?'Показывается':'Скрыт'}</span>
               <button class="a-btn" data-act="admin-banner-edit" data-banner="${b.id}">${icon('edit')} Изменить</button>
               <button class="a-btn" data-act="admin-banner-toggle" data-banner="${b.id}">${b.active?'Выключить':'Показать'}</button>
@@ -762,10 +762,10 @@ function adminMarketing(){
           </div>
         </div>`).join('')}
 
-      <h2 style="margin-top:20px">${admin.bannerDraft.id ? 'Изменить акцию' : 'Новая акция на главной'}</h2>
+      <h2 style="margin-top:var(--sp-20)">${admin.bannerDraft.id ? 'Изменить акцию' : 'Новая акция на главной'}</h2>
       <p class="a-lead-sm">Метка «−15%» — это текст на картинке, а не сама скидка. Скидку считает выбранный промокод; после его выбора метка подставится автоматически, но её можно изменить.</p>
       <div id="bannerForm">
-      <div class="a-grid a-grid-2" style="gap:10px">
+      <div class="a-grid a-grid-2" style="gap:var(--sp-10)">
         <label class="a-labeled"><span>Что открывает баннер</span><select class="input-plain" id="banner-kind" data-act="admin-banner-draft" data-field="kind">
           <option value="promo" ${admin.bannerDraft.kind==='promo'?'selected':''}>Промокод</option>
           <option value="dish" ${admin.bannerDraft.kind==='dish'?'selected':''}>Блюдо</option>
@@ -773,14 +773,14 @@ function adminMarketing(){
         </select></label>
         <label class="a-labeled"><span>Метка на картинке</span><input class="input-plain" id="banner-tag" data-act="admin-banner-draft" data-field="tag" placeholder="−20% или Новинка" value="${esc(admin.bannerDraft.tag)}"></label>
       </div>
-      <div style="margin-top:10px">
+      <div style="margin-top:var(--sp-10)">
         <input class="input-plain" id="banner-title" style="width:100%" aria-label="Заголовок акции" data-act="admin-banner-draft" data-field="title" placeholder="Заголовок, напр. Скидка 20% на второй сет" value="${esc(admin.bannerDraft.title)}">
       </div>
-      <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
+      <div class="a-grid a-grid-2" style="gap:var(--sp-10);margin-top:var(--sp-10)">
         <input class="input-plain" id="banner-sub" aria-label="Подпись под заголовком" data-act="admin-banner-draft" data-field="sub" placeholder="Подпись: промокод, условия" value="${esc(admin.bannerDraft.sub)}">
         <input class="input-plain" id="banner-cta" aria-label="Надпись на кнопке" data-act="admin-banner-draft" data-field="cta" placeholder="Кнопка: Применить код" value="${esc(admin.bannerDraft.cta)}">
       </div>
-      <div style="margin-top:10px">
+      <div style="margin-top:var(--sp-10)">
         ${admin.bannerDraft.kind === 'promo' ? `
           <label class="a-labeled"><span>Промокод, который даёт скидку</span><select class="input-plain" id="banner-code" data-act="admin-banner-draft" data-field="code">
             <option value="">— выберите промокод —</option>
@@ -798,7 +798,7 @@ function adminMarketing(){
         <div class="a-photo-fields">
           <label class="a-photo-title" for="bannerPhoto">Баннер — загрузить свой JPG или PNG</label>
           <input type="file" id="bannerPhoto" class="a-file" accept="image/*" data-act="admin-banner-photo">
-          <div class="muted" style="font-size:12px">Рекомендуем 1600 × 800 px, горизонтальный 2:1. На главной верх и низ обрежутся чуть сильнее — текст и блюдо держите по центру. Большой файл ужмётся до 1600 px по ширине.</div>
+          <div class="muted" style="font-size:var(--fs-12)">Рекомендуем 1600 × 800 px, горизонтальный 2:1. На главной верх и низ обрежутся чуть сильнее — текст и блюдо держите по центру. Большой файл ужмётся до 1600 px по ширине.</div>
           ${ownBanner ? '<button class="a-btn" data-act="admin-banner-photo-reset">Вернуть прежний баннер</button>' : ''}
           <details class="a-stock">
             <summary>Нет своего баннера? Выбрать демо-фон</summary>
@@ -809,7 +809,7 @@ function adminMarketing(){
           </details>
         </div>
       </div>
-      <div class="a-row" style="margin-top:12px">
+      <div class="a-row" style="margin-top:var(--sp-12)">
         <button class="a-btn primary" data-act="admin-banner-create">${admin.bannerDraft.id ? 'Сохранить акцию' : 'Создать акцию'}</button>
         ${admin.bannerDraft.id ? '<button class="a-btn" data-act="admin-banner-cancel">Отмена</button>' : ''}
       </div>
@@ -831,7 +831,7 @@ function adminMarketing(){
           <textarea class="input-plain" id="pushText" rows="3" maxlength="180" data-act="admin-push-draft" data-field="text" placeholder="Сегодня −15% на роллы по промокоду VASABI">${esc(admin.pushDraft.text)}</textarea>
           <p class="hint" id="pushChars">${admin.pushDraft.text.length} / 180</p>
         </div>
-        <div class="a-grid a-grid-2" style="gap:10px">
+        <div class="a-grid a-grid-2" style="gap:var(--sp-10)">
           <label class="a-labeled"><span>Что откроется по нажатию</span><select class="input-plain" id="pushPromo" data-act="admin-push-draft" data-field="promo">
             <option value="">Главная приложения</option>
             ${PROMOS.filter(p => p.active).map(p => `<option value="${p.code}" ${admin.pushDraft.promo===p.code?'selected':''}>Промокод ${p.code}</option>`).join('')}
@@ -841,7 +841,7 @@ function adminMarketing(){
             <option value="later" ${admin.pushDraft.when==='later'?'selected':''}>Запланировать</option>
           </select></label>
         </div>
-        ${admin.pushDraft.when === 'later' ? `<div class="field" style="margin-top:10px"><label for="pushScheduleAt">Дата и время</label><input class="input-plain" id="pushScheduleAt" type="datetime-local" data-act="admin-push-draft" data-field="scheduleAt" value="${esc(admin.pushDraft.scheduleAt)}"></div>` : ''}
+        ${admin.pushDraft.when === 'later' ? `<div class="field" style="margin-top:var(--sp-10)"><label for="pushScheduleAt">Дата и время</label><input class="input-plain" id="pushScheduleAt" type="datetime-local" data-act="admin-push-draft" data-field="scheduleAt" value="${esc(admin.pushDraft.scheduleAt)}"></div>` : ''}
         <div class="a-push-preview" aria-label="Предпросмотр уведомления">
           <div class="a-push-brand">${icon('bell')} васаби. <span>сейчас</span></div>
           <b id="pushPreviewTitle">${esc(admin.pushDraft.title || 'Заголовок уведомления')}</b>
@@ -853,7 +853,7 @@ function adminMarketing(){
         <p class="a-form-note">В прототипе рассылка только сохраняется в демо-журнал: телефоны ничего не получат. Для настоящей отправки и расписания нужны сервер, согласия гостей и push-провайдер.</p>
       </div>
       ${admin.pushLog.length ? `<div class="a-subform"><h2>Демо-журнал рассылок</h2>${admin.pushLog.slice(0,3).map(entry => `
-        <div class="sum-row" style="align-items:flex-start"><div><b>${esc(entry.title)}</b><div class="muted" style="font-size:12px">${esc(entry.audience)} · ${entry.count} ${plural(entry.count,'получатель','получателя','получателей')} · ${esc(entry.timing)}</div></div><span class="a-pill warn">Не отправлено</span></div>`).join('')}</div>` : ''}
+        <div class="sum-row" style="align-items:flex-start"><div><b>${esc(entry.title)}</b><div class="muted" style="font-size:var(--fs-12)">${esc(entry.audience)} · ${entry.count} ${plural(entry.count,'получатель','получателя','получателей')} · ${esc(entry.timing)}</div></div><span class="a-pill warn">Не отправлено</span></div>`).join('')}</div>` : ''}
     </div>
   </div>`;
 }
@@ -864,7 +864,7 @@ function adminClients(){
   const orderCount = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.orders) || 0), 0);
   const orderSum = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.sum) || 0), 0);
   return `
-  <div class="a-grid a-grid-4" style="margin-bottom:18px">
+  <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18)">
     <div class="a-stat"><div class="lbl">Гостей в базе</div><div class="val">${ADMIN_CLIENTS.length}</div><div class="delta">демо, CRM и заказы</div></div>
     <div class="a-stat"><div class="lbl">Повторных гостей</div><div class="val lime">${ADMIN_CLIENTS.filter(c=>c.orders>1).length}</div><div class="delta">больше одного заказа</div></div>
     <div class="a-stat"><div class="lbl">Средний чек</div><div class="val">${fmt(orderCount ? orderSum/orderCount : 0)}</div><div class="delta">по истории в этой базе</div></div>
@@ -900,12 +900,12 @@ function adminClients(){
         <article class="a-card">
           <div class="a-card-body">
             <div class="a-card-title"><b>${c.name}</b><span class="a-pill olive">${esc(clientOrigin(c))}</span></div>
-            <div class="muted" style="font-size:12.5px">${c.phone}</div>
+            <div class="muted" style="font-size:var(--fs-12)">${c.phone}</div>
             <div class="a-card-row">
               <span>${c.orders} ${plural(c.orders,'заказ','заказа','заказов')} · ${fmt(c.sum)}</span>
               <span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${c.segment}</span>
             </div>
-            <div class="muted" style="font-size:12px">Бонусы ${fmt(c.bonus)} · был ${c.last}</div>
+            <div class="muted" style="font-size:var(--fs-12)">Бонусы ${fmt(c.bonus)} · был ${c.last}</div>
             <div class="a-row">
               <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}">Начислить баллы</button>
               <button class="a-btn danger" data-act="admin-client-del" data-phone="${c.phone}" aria-label="Удалить гостя ${c.name}">${icon('trash')}</button>
@@ -916,34 +916,34 @@ function adminClients(){
   </div>
 
   ${admin.bonusFor ? `
-  <div class="a-panel" style="margin-top:16px">
+  <div class="a-panel" style="margin-top:var(--sp-16)">
     <h2>Начисление бонусов: ${admin.bonusFor.name}</h2>
-    <div class="a-grid a-grid-2" style="gap:10px;align-items:end">
+    <div class="a-grid a-grid-2" style="gap:var(--sp-10);align-items:end">
       <input class="input-plain" id="bonusAmount" type="number" min="1" inputmode="numeric" aria-label="Сколько баллов начислить" data-act="admin-bonus-amount" value="${admin.bonusAmount}">
       <div class="a-row">
         <button class="a-btn primary" data-act="admin-bonus-apply" data-phone="${admin.bonusFor.phone}">Начислить</button>
         <button class="a-btn" data-act="admin-bonus-cancel">Отмена</button>
       </div>
     </div>
-    <p class="muted" style="font-size:12.5px;margin-top:10px">Сейчас у гостя ${fmt(admin.bonusFor.bonus)}. Ручное начисление попадёт в историю демо-счёта; гость с этим телефоном увидит новый баланс.</p>
+    <p class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-10)">Сейчас у гостя ${fmt(admin.bonusFor.bonus)}. Ручное начисление попадёт в историю демо-счёта; гость с этим телефоном увидит новый баланс.</p>
   </div>` : ''}
 
-  <div class="a-panel" style="margin-top:16px">
+  <div class="a-panel" style="margin-top:var(--sp-16)">
     <h2>Импорт гостей из старой CRM</h2>
     <p class="a-lead">Выгрузите гостей из Foodpicasso в CSV и загрузите сюда — гости переедут в базу вместе с историей заказов и бонусами. Телефон сверяется: гостя с таким же номером второй раз не добавляем, а обновляем его историю.</p>
-    <p class="muted" style="font-size:12.5px;margin-top:6px">Формат строки: <code>Имя;Телефон;Заказы;Сумма;Бонусы;Сегмент</code> — разделитель «;» или «,», первая строка может быть заголовком.</p>
-    <div class="a-row" style="margin-top:12px">
+    <p class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-6)">Формат строки: <code>Имя;Телефон;Заказы;Сумма;Бонусы;Сегмент</code> — разделитель «;» или «,», первая строка может быть заголовком.</p>
+    <div class="a-row" style="margin-top:var(--sp-12)">
       <input type="file" class="a-file" accept=".csv,text/csv,text/plain" aria-label="Выбрать CSV-файл с гостями" data-act="admin-import-file">
     </div>
-    <textarea class="input-plain" id="importText" rows="3" style="margin-top:10px" aria-label="Данные гостей, можно вставить текстом" data-act="admin-import-text" placeholder="Имя;Телефон;Заказы;Сумма;Бонусы;Сегмент">${admin.clientImport.text}</textarea>
-    <div class="a-row" style="margin-top:12px">
+    <textarea class="input-plain" id="importText" rows="3" style="margin-top:var(--sp-10)" aria-label="Данные гостей, можно вставить текстом" data-act="admin-import-text" placeholder="Имя;Телефон;Заказы;Сумма;Бонусы;Сегмент">${admin.clientImport.text}</textarea>
+    <div class="a-row" style="margin-top:var(--sp-12)">
       <button class="a-btn" data-act="admin-import-check">Проверить файл</button>
       ${admin.clientImport.rows && admin.clientImport.rows.length ? `<button class="a-btn primary" id="importApply" data-act="admin-import-apply">Импортировать ${admin.clientImport.rows.length} ${plural(admin.clientImport.rows.length,'гостя','гостя','гостей')}</button>` : ''}
     </div>
     ${admin.clientImport.rows ? `
-      <div style="margin-top:14px" id="importPreview">
-        <div class="muted" style="font-size:12.5px;margin-bottom:8px">Разобрано строк: ${admin.clientImport.rows.length}. ${admin.clientImport.errors && admin.clientImport.errors.length ? `Не разобрано: ${admin.clientImport.errors.length}.` : ''}</div>
-        <div class="muted" style="font-size:12.5px;margin-bottom:8px">
+      <div style="margin-top:var(--sp-14)" id="importPreview">
+        <div class="muted" style="font-size:var(--fs-12);margin-bottom:var(--sp-8)">Разобрано строк: ${admin.clientImport.rows.length}. ${admin.clientImport.errors && admin.clientImport.errors.length ? `Не разобрано: ${admin.clientImport.errors.length}.` : ''}</div>
+        <div class="muted" style="font-size:var(--fs-12);margin-bottom:var(--sp-8)">
           Добавим: ${admin.clientImport.rows.filter(r => !r.duplicate).length}. Обновим историю: ${admin.clientImport.rows.filter(r => r.duplicate).length}.
         </div>
         <table class="a-table a-table-import">
@@ -965,15 +965,15 @@ function adminClients(){
           ${admin.clientImport.rows.map(r => `
             <article class="a-card a-card-col">
               <div class="a-card-body">
-                <div class="a-card-title"><b>${r.name}</b><span class="muted" style="font-size:12.5px">${r.phone}</span></div>
+                <div class="a-card-title"><b>${r.name}</b><span class="muted" style="font-size:var(--fs-12)">${r.phone}</span></div>
                 <div class="a-card-row">${r.orders} ${plural(r.orders,'заказ','заказа','заказов')} · ${fmt(r.sum)}</div>
-                <div class="muted" style="font-size:12.5px">Бонусы ${fmt(r.bonus)} · ${r.segment}</div>
+                <div class="muted" style="font-size:var(--fs-12)">Бонусы ${fmt(r.bonus)} · ${r.segment}</div>
                 <div class="a-card-row"><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'уже есть — обновим историю':'добавим'}</span></div>
               </div>
             </article>`).join('')}
         </div>
         ${admin.clientImport.errors && admin.clientImport.errors.length ? `
-          <div class="muted" style="font-size:12.5px;margin-top:10px;color:var(--danger)">Не разобрано строк: ${admin.clientImport.errors.length} — ${admin.clientImport.errors.slice(0,3).join('; ')}${admin.clientImport.errors.length>3?'…':''}</div>` : ''}
+          <div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-10);color:var(--danger)">Не разобрано строк: ${admin.clientImport.errors.length} — ${admin.clientImport.errors.slice(0,3).join('; ')}${admin.clientImport.errors.length>3?'…':''}</div>` : ''}
       </div>` : ''}
   </div>`;
 }
@@ -988,44 +988,44 @@ function adminAnalytics(){
   const top = DISHES.slice().sort((a,b)=>b.price-a.price).slice(0,5);
   const max = Math.max(...bars.map(b=>b.v));
   return `
-  <div class="a-grid a-grid-4" style="margin-bottom:18px">
+  <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18)">
     <div class="a-stat"><div class="lbl">Выручка за неделю</div><div class="val lime">${fmt(684300)}</div><div class="delta">+14% к прошлой неделе</div></div>
     <div class="a-stat"><div class="lbl">Заказов</div><div class="val">556</div><div class="delta">79 в день</div></div>
     <div class="a-stat"><div class="lbl">Средний чек</div><div class="val">${fmt(1231)}</div><div class="delta">+2,1%</div></div>
     <div class="a-stat"><div class="lbl">Доставка / самовывоз</div><div class="val">72% / 28%</div><div class="delta">среднее время 41 мин</div></div>
   </div>
 
-  <div class="a-grid a-grid-split" style="margin-bottom:16px">
+  <div class="a-grid a-grid-split" style="margin-bottom:var(--sp-16)">
     <div class="a-panel">
       <h2>Заказы по дням недели</h2>
-      <div style="display:flex;align-items:flex-end;gap:12px;height:170px;padding-top:10px">
+      <div style="display:flex;align-items:flex-end;gap:var(--sp-12);height:170px;padding-top:var(--sp-10)">
         ${bars.map(b => `
-          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end">
-            <span style="font-size:12px;color:var(--muted)">${b.v}</span>
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--sp-8);height:100%;justify-content:flex-end">
+            <span style="font-size:var(--fs-12);color:var(--muted)">${b.v}</span>
             <div style="width:100%;height:${Math.round(b.v/max*125)}px;background:var(--lime);border-radius:8px 8px 0 0"></div>
-            <span style="font-size:12px;color:var(--muted)">${b.d}</span>
+            <span style="font-size:var(--fs-12);color:var(--muted)">${b.d}</span>
           </div>`).join('')}
       </div>
     </div>
     <div class="a-panel">
       <h2>Популярные блюда</h2>
       ${top.map((d,i) => `
-        <div style="margin-bottom:12px">
-          <div class="row between" style="font-size:13.5px;margin-bottom:6px"><span>${i+1}. ${d.name}</span><span class="muted">${[214,187,143,121,96][i]} шт.</span></div>
+        <div style="margin-bottom:var(--sp-12)">
+          <div class="row between" style="font-size:var(--fs-13);margin-bottom:var(--sp-6)"><span>${i+1}. ${d.name}</span><span class="muted">${[214,187,143,121,96][i]} шт.</span></div>
           <div class="a-bar"><i style="width:${[100,87,67,56,45][i]}%"></i></div>
         </div>`).join('')}
     </div>
   </div>
 
-  <div class="a-panel" style="margin-top:16px">
+  <div class="a-panel" style="margin-top:var(--sp-16)">
     <div class="row between">
-      <h2>Отчёт за неделю</h2>
+      <h2>Отчёт по неделям</h2>
       <div class="a-row">
         <button class="a-btn" data-act="admin-toast" data-msg="Отчёт выгружен в CSV">Выгрузить CSV</button>
         <button class="a-btn" data-act="admin-toast" data-msg="Отчёт выгружен в Excel">Выгрузить Excel</button>
       </div>
     </div>
-    <table class="a-table a-table-report" style="margin-top:12px">
+    <table class="a-table a-table-report" style="margin-top:var(--sp-12)">
       <thead><tr><th scope="col">Период</th><th scope="col">Заказов</th><th scope="col">Выручка</th><th scope="col">Средний чек</th><th scope="col">Доставка</th></tr></thead>
       <tbody>
         ${[['20–26 октября',556,'684 300 ₽','1 231 ₽','72%'],
@@ -1042,7 +1042,7 @@ function adminAnalytics(){
           <div class="a-card-body">
             <div class="a-card-title"><b>${r[0]}</b></div>
             <div class="a-card-row">${r[1]} ${plural(r[1],'заказ','заказа','заказов')} · ${r[2]}</div>
-            <div class="muted" style="font-size:12.5px">Средний чек ${r[3]} · доставка ${r[4]}</div>
+            <div class="muted" style="font-size:var(--fs-12)">Средний чек ${r[3]} · доставка ${r[4]}</div>
           </div>
         </article>`).join('')}
     </div>
@@ -1068,19 +1068,19 @@ function adminSettings(){
       <button class="switch-row" role="switch" aria-checked="${!!s.sound}" data-act="admin-toggle" data-key="sound">
         <span>Звук нового заказа</span><span class="opt-toggle ${s.sound?'is-on':''}" aria-hidden="true"></span>
       </button>
-      <button class="a-btn primary" style="margin-top:8px" data-act="admin-save">Сохранить</button>
+      <button class="a-btn primary" style="margin-top:var(--sp-8)" data-act="admin-save">Сохранить</button>
     </div>
 
     <div>
-      <div class="a-panel" style="margin-bottom:16px">
+      <div class="a-panel" style="margin-bottom:var(--sp-16)">
         <h2>Точки ресторана</h2>
         <p class="a-lead-sm">Новая точка сразу появляется в самовывозе, на экране «О ресторане» и в списке для печати QR-меню.</p>
         ${LOCATIONS.map(loc => `
           <div class="sum-row" style="align-items:flex-start">
             <div>
               <div style="font-weight:600">${esc(loc.name)}</div>
-              <div class="muted" style="font-size:12.5px">${esc(loc.address)} · ${loc.hours}</div>
-              <div class="a-pill ${loc.service==='pickup'?'olive':'lime'}" style="margin-top:7px">${esc(loc.delivery)}</div>
+              <div class="muted" style="font-size:var(--fs-12)">${esc(loc.address)} · ${loc.hours}</div>
+              <div class="a-pill ${loc.service==='pickup'?'olive':'lime'}" style="margin-top:var(--sp-8)">${esc(loc.delivery)}</div>
             </div>
             <button class="a-btn" data-act="admin-location-edit" data-id="${loc.id}" aria-label="Изменить ${esc(loc.name)}">${icon('edit')}</button>
           </div>`).join('')}
@@ -1088,7 +1088,7 @@ function adminSettings(){
           <h3>${l.id ? 'Изменить точку' : '+ Добавить точку'}</h3>
           <div class="field"><label for="location-name">Название</label><input class="input-plain" id="location-name" data-act="admin-location-draft" data-field="name" placeholder="Васаби на Ленина" value="${esc(l.name)}"></div>
           <div class="field"><label for="location-address">Адрес</label><input class="input-plain" id="location-address" data-act="admin-location-draft" data-field="address" placeholder="Город, улица, дом" value="${esc(l.address)}"></div>
-          <div class="a-grid a-grid-2" style="gap:10px">
+          <div class="a-grid a-grid-2" style="gap:var(--sp-10)">
             <div class="field"><label for="location-open">Открытие</label><input class="input-plain" id="location-open" type="time" data-act="admin-location-draft" data-field="open" value="${l.open}"></div>
             <div class="field"><label for="location-close">Закрытие</label><input class="input-plain" id="location-close" type="time" data-act="admin-location-draft" data-field="close" value="${l.close}"></div>
           </div>
@@ -1101,12 +1101,12 @@ function adminSettings(){
         <p class="a-lead-sm">Выберите роль у человека или добавьте нового. Войти в демо-панель: приложение гостя → «Профиль» → «Доступ сотрудника».</p>
         ${ADMIN_STAFF.map(person => `
           <div class="sum-row a-staff-row">
-            <div><div style="font-weight:600">${esc(person.name)}</div><div class="muted" style="font-size:12.5px">${esc(person.phone)}</div><div class="muted" style="font-size:12px;margin-top:3px">${esc(STAFF_ROLES[person.role].description)}</div></div>
+            <div><div style="font-weight:600">${esc(person.name)}</div><div class="muted" style="font-size:var(--fs-12)">${esc(person.phone)}</div><div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-4)">${esc(STAFF_ROLES[person.role].description)}</div></div>
             <label class="a-role-select"><span class="sr-only">Роль сотрудника ${esc(person.name)}</span><select class="input-plain" data-act="admin-staff-role" data-id="${person.id}">${Object.entries(STAFF_ROLES).map(([id,r]) => `<option value="${id}" ${person.role===id?'selected':''}>${r.label}</option>`).join('')}</select></label>
           </div>`).join('')}
         <div id="staffForm" class="a-subform">
           <h3>+ Добавить сотрудника</h3>
-          <div class="a-grid a-grid-2" style="gap:10px">
+          <div class="a-grid a-grid-2" style="gap:var(--sp-10)">
             <div class="field"><label for="staff-name">Имя</label><input class="input-plain" id="staff-name" data-act="admin-staff-draft" data-field="name" autocomplete="off" value="${esc(admin.staffDraft.name)}"></div>
             <div class="field"><label for="staff-phone">Телефон</label><input class="input-plain" id="staff-phone" type="tel" data-act="admin-staff-draft" data-field="phone" autocomplete="off" placeholder="+7 900 000-00-00" value="${esc(admin.staffDraft.phone)}"></div>
           </div>
@@ -1170,18 +1170,18 @@ function adminQr(){
     <div class="a-panel">
       <h2>Предпросмотр · стол ${tables[0]}</h2>
       <div class="qr-tile">${QR.svg(url, { ec:q.ec, px:5, margin:3, dark:'#080B08', light:'#FFFFFF' })}</div>
-      <div class="muted small" style="margin-top:10px">
+      <div class="muted small" style="margin-top:var(--sp-10)">
         Версия ${m.version} · ${m.size}×${m.size} модулей · уровень ${m.ec} · маска ${m.mask}
       </div>
-      <div class="a-row" style="margin-top:14px">
+      <div class="a-row" style="margin-top:var(--sp-14)">
         <button class="a-btn primary" data-act="admin-qr-png" data-no="${tables[0]}" data-loc="${loc.id}">${icon('doc')} Скачать PNG</button>
         <button class="a-btn" data-act="admin-qr-print" data-loc="${loc.id}" data-count="${tables.length}">${icon('printer')} Печать ${tables.length} ${plural(tables.length,'листа','листов','листов')}</button>
       </div>
     </div>
   </div>
 
-  <div class="a-panel" style="margin-top:16px">
-    <div class="a-row between" style="margin-bottom:10px">
+  <div class="a-panel" style="margin-top:var(--sp-16)">
+    <div class="a-row between" style="margin-bottom:var(--sp-10)">
       <h2>Столы точки «${loc.name}»</h2>
       <button class="a-btn" data-act="admin-qr-print" data-loc="${loc.id}" data-count="${tables.length}">${icon('printer')} Печать всех листов</button>
     </div>
@@ -1194,7 +1194,7 @@ function adminQr(){
           <tr>
             <td><b>№ ${no}</b></td>
             <td><span class="qr-mini">${QR.svg(u, { ec:q.ec, px:1.6, margin:2 })}</span></td>
-            <td class="muted" style="font-size:12px">${u}</td>
+            <td class="muted" style="font-size:var(--fs-12)">${u}</td>
             <td>
               <div class="a-row">
                 <button class="a-btn" data-act="admin-qr-png" data-no="${no}" data-loc="${loc.id}">PNG</button>
@@ -1212,9 +1212,9 @@ function adminQr(){
         <article class="a-card a-card-col">
           <div class="a-card-body">
             <div class="a-card-title"><b>№ ${no}</b></div>
-            <div class="a-row" style="align-items:center;gap:12px">
+            <div class="a-row" style="align-items:center;gap:var(--sp-12)">
               <span class="qr-mini">${QR.svg(u, { ec:q.ec, px:1.6, margin:2 })}</span>
-              <span class="muted" style="font-size:12px;word-break:break-all">${u}</span>
+              <span class="muted" style="font-size:var(--fs-12);word-break:break-all">${u}</span>
             </div>
             <div class="a-row">
               <button class="a-btn" data-act="admin-qr-png" data-no="${no}" data-loc="${loc.id}">PNG</button>
@@ -1224,7 +1224,7 @@ function adminQr(){
         </article>`;
       }).join('')}
     </div>
-    <p class="muted small" style="margin-top:12px">
+    <p class="muted small" style="margin-top:var(--sp-12)">
       Листы печатаются по 4 на странице A4: номер стола крупно, меню открывается камерой — приложение ставить не нужно.
       Гость видит тот же стоп-лист, что и зал: снятое блюдо исчезает из меню сразу.
     </p>

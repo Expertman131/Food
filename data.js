@@ -83,7 +83,7 @@ const DISHES = [
   },
   {
     id: 'd-sing', name: 'Сингапурский ролл', price: 620, cat: 'rolls',
-    unit: '8 шт. · 250 г', img: 'assets/california.jpg',
+    unit: '8 шт. · 250 г', img: 'assets/singapore.jpg',
     desc: 'Лосось, манго, авокадо и кунжут в сладком соусе. Летний вкус в каждом кусочке.',
     composition: 'Рис, лосось, манго, авокадо, кунжут, водоросли нори, сладкий соус, соевый соус.',
     allergens: ['рыба', 'соя', 'кунжут'],
@@ -92,7 +92,7 @@ const DISHES = [
   },
   {
     id: 'd-baked', name: 'Запечённый с лососем', price: 650, cat: 'baked',
-    unit: '8 шт. · 260 г', img: 'assets/philadelphia.jpg',
+    unit: '8 шт. · 260 г', img: 'assets/baked-roll.jpg',
     desc: 'Тёплый ролл с лососем, сливочным сыром и спайси-соусом в хрустящей корочке.',
     composition: 'Рис, лосось, сливочный сыр, спайси-соус, водоросли нори, кунжут, соевый соус.',
     allergens: ['рыба', 'соя', 'глютен', 'кунжут', 'молоко', 'яйца'],
@@ -110,7 +110,7 @@ const DISHES = [
   },
   {
     id: 'd-miso', name: 'Мисо-суп', price: 390, cat: 'hot',
-    unit: '350 мл', img: 'assets/sashimi.jpg',
+    unit: '350 мл', img: 'assets/miso-soup.jpg',
     desc: 'Тофу, водоросли, вакамэ и кунжут. Лёгкий горячий суп, который отлично идёт к роллам.',
     composition: 'Тофу, водоросли вакамэ, кунжут, соевый бульон, соевый соус.',
     allergens: ['соя', 'кунжут', 'глютен'],
@@ -140,7 +140,8 @@ const DISHES = [
 /* Фото блюд: новую позицию в админке можно положить на любой снимок из набора */
 const DISH_IMAGES = [
   'assets/sushi-boat.jpg', 'assets/philadelphia.jpg', 'assets/california.jpg',
-  'assets/tempura.jpg', 'assets/sashimi.jpg', 'assets/cheesecake.jpg', 'assets/latte.jpg'
+  'assets/tempura.jpg', 'assets/sashimi.jpg', 'assets/cheesecake.jpg', 'assets/latte.jpg',
+  'assets/singapore.jpg', 'assets/baked-roll.jpg', 'assets/miso-soup.jpg'
 ];
 
 /* Телефоны сравниваются по цифрам: «+7 916 330-12-04» и «89163301204» — один гость */
