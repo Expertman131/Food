@@ -52,7 +52,8 @@ const ADMIN_CLIENTS = [
 
 const emptyDishDraft = () => ({
   id:null, name:'', cat:'rolls', price:'', unit:'', badge:'',
-  desc:'', composition:'', allergens:'', img:'assets/philadelphia.jpg', popular:false
+  desc:'', composition:'', allergens:'', img:'assets/philadelphia.jpg',
+  defaultImg:'assets/philadelphia.jpg', popular:false
 });
 
 const emptyBannerDraft = () => ({
@@ -95,6 +96,31 @@ function parseClientsCsv(text){
     rows.push({ name, phone: formatPhone(phone), orders, sum, bonus, segment, duplicate: known.has(phone) });
   });
   return { rows, errors, skipped: rows.filter(r => r.duplicate).length + errors.length };
+}
+
+/* Фото из телефона: ужимаем до 900 px по ширине и переводим в jpeg,
+   иначе страница с картинкой весит десятки мегабайт и подвисает. */
+function readImageFile(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('decode'));
+      img.onload = () => {
+        const maxW = 900;
+        const scale = Math.min(1, maxW / (img.width || maxW));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        try { resolve(canvas.toDataURL('image/jpeg', 0.82)); }
+        catch (e) { reject(e); }
+      };
+      img.src = String(reader.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 /* Значения полей берём из формы, а не из состояния: браузер мог заполнить
@@ -284,7 +310,7 @@ function adminOrders(){
 
   <div class="a-panel" style="margin-top:16px">
     <h2>Передача в iikoDelivery</h2>
-    <p class="muted" style="font-size:13px">Автоматическая передача заказа в iikoDelivery, печать на кухню в iikoKitchen и фискализация в iikoCash. Требуется лицензия iikoDelivery + iikoKitchen и API-ключи тестового стенда.</p>
+    <p class="a-lead">Автоматическая передача заказа в iikoDelivery, печать на кухню в iikoKitchen и фискализация в iikoCash. Требуется лицензия iikoDelivery + iikoKitchen и API-ключи тестового стенда.</p>
     <div class="a-row" style="margin-top:12px">
       <span class="a-pill warn">${icon('info')} Не подключено</span>
       <button class="a-btn" data-act="admin-toast" data-msg="Заявка на подключение iiko отправлена подрядчику">Заказать подключение</button>
@@ -300,10 +326,11 @@ function adminMenu(){
   const featured = list.filter(d => d.popular);
   const active = list.filter(dishAvailable).length;
   const stopped = list.length - active;
+  const ownPhoto = !!admin.dishDraft.img && !DISH_IMAGES.includes(admin.dishDraft.img);
   return `
   <div class="a-panel" id="dishForm" style="margin-bottom:18px">
     <h2>${admin.dishDraft.id ? 'Редактирование блюда' : 'Добавить блюдо в меню'}</h2>
-    <p class="muted" style="font-size:13px">Позиция появляется в меню гостя сразу: и в каталоге, и в поиске, и в QR-меню в зале.</p>
+    <p class="a-lead">Позиция появляется в меню гостя сразу: и в каталоге, и в поиске, и в QR-меню в зале.</p>
     <div class="a-grid a-grid-3" style="gap:10px">
       <input class="input-plain" id="dish-name" aria-label="Название блюда" data-act="admin-dish-draft" data-field="name" placeholder="Название, напр. Темпура с креветкой" value="${admin.dishDraft.name}">
       <select class="input-plain" id="dish-cat" aria-label="Категория блюда" data-act="admin-dish-draft" data-field="cat">
@@ -313,8 +340,18 @@ function adminMenu(){
       <input class="input-plain" id="dish-unit" aria-label="Вес или количество" data-act="admin-dish-draft" data-field="unit" placeholder="Вес: 8 шт. · 260 г" value="${admin.dishDraft.unit}">
       <input class="input-plain" id="dish-badge" aria-label="Пометка над названием" data-act="admin-dish-draft" data-field="badge" placeholder="Пометка, напр. Хит" value="${admin.dishDraft.badge}">
       <select class="input-plain" id="dish-img" aria-label="Фото блюда" data-act="admin-dish-draft" data-field="img">
+        ${ownPhoto ? `<option value="${admin.dishDraft.img}" selected>— своё фото —</option>` : ''}
         ${DISH_IMAGES.map(p => `<option value="${p}" ${admin.dishDraft.img===p?'selected':''}>${p.replace('assets/','')}</option>`).join('')}
       </select>
+    </div>
+    <div class="a-photo">
+      <img class="a-photo-preview" src="${admin.dishDraft.img}" alt="Фото блюда">
+      <div class="a-photo-fields">
+        <label class="a-photo-title" for="dishPhoto">Своё фото блюда</label>
+        <input type="file" id="dishPhoto" class="a-file" accept="image/*" data-act="admin-dish-photo">
+        <div class="muted" style="font-size:12px">Снимок с телефона подойдёт: он обрежется по квадрату и ужмётся, чтобы страница не тормозила.</div>
+        ${ownPhoto ? '<button class="a-btn" data-act="admin-dish-photo-reset">Вернуть фото из набора</button>' : ''}
+      </div>
     </div>
     <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
       <textarea class="input-plain" id="dish-desc" rows="2" aria-label="Описание блюда" data-act="admin-dish-draft" data-field="desc" placeholder="Описание для гостя">${admin.dishDraft.desc}</textarea>
@@ -344,36 +381,58 @@ function adminMenu(){
       <h2 style="margin-bottom:0">Блюда и цены</h2>
       <button class="a-btn primary" data-act="admin-dish-new">+ Добавить блюдо</button>
     </div>
-    <table class="a-table">
+    <table class="a-table a-table-dishes">
       <thead><tr><th scope="col"><span class="sr-only">Фото</span></th><th scope="col">Название</th><th scope="col">Категория</th><th scope="col">Вес</th><th scope="col">Цена</th><th scope="col">На главной</th><th scope="col">Статус</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${list.map(d => `
           <tr class="${dishAvailable(d)?'':'is-stopped'}">
             <td><img class="thumb" src="${d.img}" alt=""></td>
             <td><b>${d.name}</b>${d.badge?`<div class="muted" style="font-size:11.5px;margin-top:2px">${d.badge}</div>`:''}</td>
-            <td class="muted">${CATEGORIES.find(c=>c.id===d.cat).name}</td>
-            <td class="muted">${d.unit}</td>
-            <td><b>${fmt(d.price)}</b></td>
-            <td>
+            <td class="muted nw">${CATEGORIES.find(c=>c.id===d.cat).name}</td>
+            <td class="muted nw">${d.unit}</td>
+            <td class="nw"><b>${fmt(d.price)}</b></td>
+            <td class="nw">
               <button class="a-btn star ${d.popular?'is-on':''}" aria-pressed="${d.popular?'true':'false'}"
                 aria-label="${d.popular?'Убрать «'+d.name+'» с главной':'Показать «'+d.name+'» на главной'}"
                 data-act="admin-featured" data-id="${d.id}">${icon('star')}</button>
             </td>
-            <td><span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span></td>
-            <td>
+            <td class="nw"><span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span></td>
+            <td class="nw">
               <div class="a-row">
                 <button class="a-btn" aria-label="Редактировать «${d.name}»" data-act="admin-dish-edit" data-id="${d.id}">${icon('edit')}</button>
-                <button class="a-btn ${dishAvailable(d)?'':'primary'}" data-act="admin-stoplist" data-id="${d.id}">${dishAvailable(d) ? 'Стоп-лист' : 'Вернуть в меню'}</button>
+                <button class="a-btn a-btn-stop ${dishAvailable(d)?'':'primary'}" data-act="admin-stoplist" data-id="${d.id}">${dishAvailable(d) ? 'Стоп-лист' : 'Вернуть в меню'}</button>
               </div>
             </td>
           </tr>`).join('')}
       </tbody>
     </table>
+
+    <div class="a-cards">
+      ${list.map(d => `
+        <article class="a-card ${dishAvailable(d)?'':'is-stopped'}">
+          <img class="a-card-thumb" src="${d.img}" alt="">
+          <div class="a-card-body">
+            <div class="a-card-title"><b>${d.name}</b>${d.badge?`<span class="muted">${d.badge}</span>`:''}</div>
+            <div class="muted" style="font-size:12.5px">${CATEGORIES.find(c=>c.id===d.cat).name} · ${d.unit}</div>
+            <div class="a-card-row">
+              <b>${fmt(d.price)}</b>
+              <span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span>
+            </div>
+            <div class="a-row">
+              <button class="a-btn star ${d.popular?'is-on':''}" aria-pressed="${d.popular?'true':'false'}"
+                aria-label="${d.popular?'Убрать «'+d.name+'» с главной':'Показать «'+d.name+'» на главной'}"
+                data-act="admin-featured" data-id="${d.id}">${icon('star')}</button>
+              <button class="a-btn" aria-label="Редактировать «${d.name}»" data-act="admin-dish-edit" data-id="${d.id}">${icon('edit')}</button>
+              <button class="a-btn a-btn-stop ${dishAvailable(d)?'':'primary'}" data-act="admin-stoplist" data-id="${d.id}">${dishAvailable(d) ? 'Стоп-лист' : 'Вернуть в меню'}</button>
+            </div>
+          </div>
+        </article>`).join('')}
+    </div>
   </div>
 
   <div class="a-panel" style="margin-top:16px">
     <h2>Лента «Попробуйте любимое» на главной</h2>
-    <p class="muted" style="font-size:13px">Отмеченные блюда гость видит на главной без прокрутки. Не больше ${RULES.featuredMax}: главная не должна превращаться в каталог.</p>
+    <p class="a-lead">Отмеченные блюда гость видит на главной без прокрутки. Не больше ${RULES.featuredMax}: главная не должна превращаться в каталог.</p>
     ${featured.length ? featured.map(d => `
       <div class="sum-row">
         <span class="row-star">${icon('star')}<span>${d.name}</span>${dishAvailable(d)?'':'<span class="a-pill red" style="margin-left:8px">в стоп-листе — гостю не виден</span>'}</span>
@@ -395,7 +454,7 @@ function adminMenu(){
       <div class="sum-row"><span>Фирменный соус</span><span class="val">0 ₽</span></div>
     </div>
     <div class="a-panel"><h2>Стоп-лист</h2>
-      <p class="muted" style="font-size:13px">Позиции, которых нет на кухне прямо сейчас. Клиенты их не видят, и оповещение уходит в зал.</p>
+      <p class="a-lead">Позиции, которых нет на кухне прямо сейчас. Клиенты их не видят, и оповещение уходит в зал.</p>
       <div class="sum-row"><span>Калифорния</span><span class="val">нет в наличии</span></div>
     </div>
   </div>`;
@@ -415,21 +474,32 @@ function adminMarketing(){
   <div class="a-grid a-grid-split" style="margin-bottom:16px">
     <div class="a-panel">
       <h2>Промокоды</h2>
-      <table class="a-table">
+      <table class="a-table a-table-promos">
         <thead><tr><th scope="col">Код</th><th scope="col">Тип</th><th scope="col">Значение</th><th scope="col">Мин. сумма</th><th scope="col">Использований</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
         <tbody>
           ${PROMOS.map(p => `
             <tr>
               <td><b>${p.code}</b>${p.active?'':'<div class="muted" style="font-size:11.5px">выключен</div>'}</td>
-              <td class="muted">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная':'Доставка')}</td>
-              <td>${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}</td>
-              <td class="muted">${p.min?fmt(p.min):'—'}</td>
-              <td class="muted">${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</td>
-              <td><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${p.code}">${p.active?'Отключить':'Включить'}</button></td>
+              <td class="muted nw">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная':'Доставка')}</td>
+              <td class="nw">${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}</td>
+              <td class="muted nw">${p.min?fmt(p.min):'—'}</td>
+              <td class="muted nw">${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</td>
+              <td class="nw"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${p.code}">${p.active?'Отключить':'Включить'}</button></td>
             </tr>`).join('')}
         </tbody>
       </table>
-      <<h2 style="margin-top:20px">Новый промокод</h2>
+      <div class="a-cards">
+        ${PROMOS.map(p => `
+          <article class="a-card a-card-col">
+            <div class="a-card-body">
+              <div class="a-card-title"><b>${p.code}</b>${p.active?'':'<span class="a-pill warn">выключен</span>'}</div>
+              <div class="muted" style="font-size:12.5px">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная сумма':'Бесплатная доставка')} · ${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}${p.min?' · от '+fmt(p.min):''}</div>
+              <div class="muted" style="font-size:12.5px">Использований: ${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</div>
+              <div class="a-row"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${p.code}">${p.active?'Отключить':'Включить'}</button></div>
+            </div>
+          </article>`).join('')}
+      </div>
+      <h2 style="margin-top:20px">Новый промокод</h2>
       <div class="a-grid a-grid-3" style="gap:10px">
         <input class="input-plain" aria-label="Код промокода" data-act="admin-draft" data-field="code" placeholder="Код, напр. AUTUMN25" value="${admin.promoDraft.code}">
         <select class="input-plain" aria-label="Тип скидки" data-act="admin-draft" data-field="type">
@@ -463,8 +533,8 @@ function adminMarketing(){
           </div>
         </div>`).join('')}
 
-      <<h2 style="margin-top:20px">Новая акция на главной</h2>
-      <p class="muted" style="font-size:12.5px;margin-bottom:10px">Карточка появится в карусели на главной и на экране «Акции» — сразу, как только создана.</p>
+      <h2 style="margin-top:20px">Новая акция на главной</h2>
+      <p class="a-lead-sm">Карточка появится в карусели на главной и на экране «Акции» — сразу, как только создана.</p>
       <div id="bannerForm">
       <div class="a-grid a-grid-2" style="gap:10px">
         <select class="input-plain" id="banner-kind" aria-label="Куда ведёт акция" data-act="admin-banner-draft" data-field="kind">
@@ -500,7 +570,7 @@ function adminMarketing(){
       <button class="a-btn primary" style="margin-top:12px" data-act="admin-banner-create">Создать акцию</button>
       </div>
 
-      <<h2 style="margin-top:20px">Push-рассылка</h2>
+      <h2 style="margin-top:20px">Push-рассылка</h2>
       <textarea class="input-plain" rows="3" placeholder="Текст сообщения для гостей"></textarea>
       <div class="a-row" style="margin-top:10px">
         <button class="a-btn" data-act="admin-toast" data-msg="Рассылка отправлена 214 гостям">Отправить всем (214)</button>
@@ -522,19 +592,19 @@ function adminClients(){
   </div>
   <div class="a-panel">
     <h2>Гости</h2>
-    <table class="a-table">
+    <table class="a-table a-table-clients">
       <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Последний</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${ADMIN_CLIENTS.map(c => `
           <tr>
             <td><b>${c.name}</b>${c.source?` <span class="a-pill olive">${c.source}</span>`:''}</td>
-            <td class="muted">${c.phone}</td>
-            <td>${c.orders}</td>
-            <td>${fmt(c.sum)}</td>
-            <td>${fmt(c.bonus)}</td>
-            <td><span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${c.segment}</span></td>
-            <td class="muted">${c.last}</td>
-            <td>
+            <td class="muted nw">${c.phone}</td>
+            <td class="nw">${c.orders}</td>
+            <td class="nw">${fmt(c.sum)}</td>
+            <td class="nw">${fmt(c.bonus)}</td>
+            <td class="nw"><span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${c.segment}</span></td>
+            <td class="muted nw">${c.last}</td>
+            <td class="nw">
               <div class="a-row">
                 <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}">Начислить</button>
                 <button class="a-btn danger" data-act="admin-client-del" data-phone="${c.phone}" aria-label="Удалить гостя ${c.name}">${icon('trash')}</button>
@@ -543,6 +613,25 @@ function adminClients(){
           </tr>`).join('')}
       </tbody>
     </table>
+
+    <div class="a-cards">
+      ${ADMIN_CLIENTS.map(c => `
+        <article class="a-card">
+          <div class="a-card-body">
+            <div class="a-card-title"><b>${c.name}</b>${c.source?`<span class="a-pill olive">${c.source}</span>`:''}</div>
+            <div class="muted" style="font-size:12.5px">${c.phone}</div>
+            <div class="a-card-row">
+              <span>${c.orders} ${plural(c.orders,'заказ','заказа','заказов')} · ${fmt(c.sum)}</span>
+              <span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${c.segment}</span>
+            </div>
+            <div class="muted" style="font-size:12px">Бонусы ${fmt(c.bonus)} · был ${c.last}</div>
+            <div class="a-row">
+              <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}">Начислить баллы</button>
+              <button class="a-btn danger" data-act="admin-client-del" data-phone="${c.phone}" aria-label="Удалить гостя ${c.name}">${icon('trash')}</button>
+            </div>
+          </div>
+        </article>`).join('')}
+    </div>
   </div>
 
   ${admin.bonusFor ? `
@@ -560,7 +649,7 @@ function adminClients(){
 
   <div class="a-panel" style="margin-top:16px">
     <h2>Импорт гостей из старой CRM</h2>
-    <p class="muted" style="font-size:13px">Выгрузите гостей из Foodpicasso в CSV и загрузите сюда — гости переедут в базу вместе с историей заказов и бонусами. Телефон сверяется: гостя с таким же номером второй раз не добавляем, а обновляем его историю.</p>
+    <p class="a-lead">Выгрузите гостей из Foodpicasso в CSV и загрузите сюда — гости переедут в базу вместе с историей заказов и бонусами. Телефон сверяется: гостя с таким же номером второй раз не добавляем, а обновляем его историю.</p>
     <p class="muted" style="font-size:12.5px;margin-top:6px">Формат строки: <code>Имя;Телефон;Заказы;Сумма;Бонусы;Сегмент</code> — разделитель «;» или «,», первая строка может быть заголовком.</p>
     <div class="a-row" style="margin-top:12px">
       <input type="file" class="a-file" accept=".csv,text/csv,text/plain" aria-label="Выбрать CSV-файл с гостями" data-act="admin-import-file">
@@ -576,7 +665,7 @@ function adminClients(){
         <div class="muted" style="font-size:12.5px;margin-bottom:8px">
           Добавим: ${admin.clientImport.rows.filter(r => !r.duplicate).length}. Обновим историю: ${admin.clientImport.rows.filter(r => r.duplicate).length}.
         </div>
-        <table class="a-table">
+        <table class="a-table a-table-import">
           <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Статус</th></tr></thead>
           <tbody>
             ${admin.clientImport.rows.map(r => `
@@ -591,6 +680,17 @@ function adminClients(){
               </tr>`).join('')}
           </tbody>
         </table>
+        <div class="a-cards">
+          ${admin.clientImport.rows.map(r => `
+            <article class="a-card a-card-col">
+              <div class="a-card-body">
+                <div class="a-card-title"><b>${r.name}</b><span class="muted" style="font-size:12.5px">${r.phone}</span></div>
+                <div class="a-card-row">${r.orders} ${plural(r.orders,'заказ','заказа','заказов')} · ${fmt(r.sum)}</div>
+                <div class="muted" style="font-size:12.5px">Бонусы ${fmt(r.bonus)} · ${r.segment}</div>
+                <div class="a-card-row"><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'уже есть — обновим историю':'добавим'}</span></div>
+              </div>
+            </article>`).join('')}
+        </div>
         ${admin.clientImport.errors && admin.clientImport.errors.length ? `
           <div class="muted" style="font-size:12.5px;margin-top:10px;color:var(--danger)">Не разобрано строк: ${admin.clientImport.errors.length} — ${admin.clientImport.errors.slice(0,3).join('; ')}${admin.clientImport.errors.length>3?'…':''}</div>` : ''}
       </div>` : ''}
@@ -644,7 +744,7 @@ function adminAnalytics(){
         <button class="a-btn" data-act="admin-toast" data-msg="Отчёт выгружен в Excel">Выгрузить Excel</button>
       </div>
     </div>
-    <table class="a-table" style="margin-top:12px">
+    <table class="a-table a-table-report" style="margin-top:12px">
       <thead><tr><th scope="col">Период</th><th scope="col">Заказов</th><th scope="col">Выручка</th><th scope="col">Средний чек</th><th scope="col">Доставка</th></tr></thead>
       <tbody>
         ${[['20–26 октября',556,'684 300 ₽','1 231 ₽','72%'],
@@ -653,6 +753,18 @@ function adminAnalytics(){
           <tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td></tr>`).join('')}
       </tbody>
     </table>
+    <div class="a-cards">
+      ${[['20–26 октября',556,'684 300 ₽','1 231 ₽','72%'],
+         ['13–19 октября',487,'601 900 ₽','1 236 ₽','70%'],
+         ['6–12 октября',455,'558 200 ₽','1 227 ₽','68%']].map(r=>`
+        <article class="a-card a-card-col">
+          <div class="a-card-body">
+            <div class="a-card-title"><b>${r[0]}</b></div>
+            <div class="a-card-row">${r[1]} ${plural(r[1],'заказ','заказа','заказов')} · ${r[2]}</div>
+            <div class="muted" style="font-size:12.5px">Средний чек ${r[3]} · доставка ${r[4]}</div>
+          </div>
+        </article>`).join('')}
+    </div>
   </div>`;
 }
 
@@ -691,13 +803,15 @@ function adminSettings(){
       </div>
       <div class="a-panel">
         <h2>Роли сотрудников</h2>
-        <table class="a-table">
-          <tbody>
-            <tr><td>Администратор</td><td class="muted">меню, заказы, отчёты, сотрудники</td></tr>
-            <tr><td>Оператор заказов</td><td class="muted">приём, статус, печать чека</td></tr>
-            <tr><td>Курьер</td><td class="muted">выдача заказа, статус доставки</td></tr>
-          </tbody>
-        </table>
+        ${[['Администратор','меню, заказы, отчёты, сотрудники'],
+           ['Оператор заказов','приём, статус, печать чека'],
+           ['Курьер','выдача заказа, статус доставки']].map(r=>`
+          <div class="sum-row" style="align-items:flex-start">
+            <div>
+              <div style="font-weight:600">${r[0]}</div>
+              <div class="muted" style="font-size:12.5px">${r[1]}</div>
+            </div>
+          </div>`).join('')}
       </div>
     </div>
   </div>`;
@@ -769,7 +883,7 @@ function adminQr(){
       <h2>Столы точки «${loc.name}»</h2>
       <button class="a-btn" data-act="admin-qr-print" data-loc="${loc.id}" data-count="${tables.length}">${icon('printer')} Печать всех листов</button>
     </div>
-    <table class="a-table">
+    <table class="a-table a-table-qr">
       <thead><tr><th scope="col">Стол</th><th scope="col">QR</th><th scope="col">Адрес меню</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${tables.map(no => {
@@ -789,6 +903,25 @@ function adminQr(){
         }).join('')}
       </tbody>
     </table>
+    <div class="a-cards">
+      ${tables.map(no => {
+        const u = menuUrl(no, loc.id);
+        return `
+        <article class="a-card a-card-col">
+          <div class="a-card-body">
+            <div class="a-card-title"><b>№ ${no}</b></div>
+            <div class="a-row" style="align-items:center;gap:12px">
+              <span class="qr-mini">${QR.svg(u, { ec:q.ec, px:1.6, margin:2 })}</span>
+              <span class="muted" style="font-size:12px;word-break:break-all">${u}</span>
+            </div>
+            <div class="a-row">
+              <button class="a-btn" data-act="admin-qr-png" data-no="${no}" data-loc="${loc.id}">PNG</button>
+              <button class="a-btn" data-act="admin-qr-open" data-no="${no}" data-loc="${loc.id}">Открыть меню</button>
+            </div>
+          </div>
+        </article>`;
+      }).join('')}
+    </div>
     <p class="muted small" style="margin-top:12px">
       Листы печатаются по 4 на странице A4: номер стола крупно, меню открывается камерой — приложение ставить не нужно.
       Гость видит тот же стоп-лист, что и зал: снятое блюдо исчезает из меню сразу.
@@ -913,7 +1046,7 @@ document.addEventListener('click', ev => {
     admin.dishDraft = {
       id:d.id, name:d.name, cat:d.cat, price:d.price, unit:d.unit || '',
       badge:d.badge || '', desc:d.desc || '', composition:d.composition || '',
-      allergens:(d.allergens || []).join(', '), img:d.img, popular:!!d.popular
+      allergens:(d.allergens || []).join(', '), img:d.img, defaultImg:d.img, popular:!!d.popular
     };
     renderAdmin();
     const form = document.getElementById('dishForm');
@@ -932,6 +1065,10 @@ document.addEventListener('click', ev => {
     if (form) form.scrollIntoView({ block:'start', behavior:'smooth' });
     const nameEl = document.getElementById('dish-name');
     if (nameEl) nameEl.focus({ preventScroll:true });
+  }
+  if (act === 'admin-dish-photo-reset'){
+    admin.dishDraft.img = admin.dishDraft.defaultImg || 'assets/philadelphia.jpg';
+    renderAdmin();
   }
   if (act === 'admin-dish-save'){
     const dr = readDraftFields('dishForm', 'admin-dish-draft', admin.dishDraft);
@@ -1206,6 +1343,20 @@ document.addEventListener('change', ev => {
       toast('Файл прочитан: ' + file.name + ' — нажмите «Проверить файл»');
     };
     reader.readAsText(file, 'utf-8');
+    return;
+  }
+  if (el.dataset.act === 'admin-dish-photo'){
+    const file = el.files && el.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type || '')){
+      toast('Нужен файл картинки — jpg или png');
+      return;
+    }
+    readImageFile(file).then(dataUrl => {
+      admin.dishDraft.img = dataUrl;
+      renderAdmin();
+      toast('Фото загружено — сохраните блюдо, чтобы оно появилось в меню');
+    }).catch(() => toast('Не получилось прочитать фото'));
     return;
   }
 });

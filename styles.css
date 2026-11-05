@@ -713,7 +713,15 @@ body[data-mode="admin"] .tb-size{display:none;}
 
 .a-panel{background:var(--surface);border-radius:16px;padding:18px;}
 .a-panel h2{font-size:15px;font-weight:700;margin-bottom:14px;}
-.a-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+/* пояснение под заголовком: единый вертикальный ритм 14 px */
+.a-lead{margin:0 0 14px;font-size:13px;color:var(--muted);}
+.a-lead-sm{margin:0 0 10px;font-size:12.5px;color:var(--muted);}
+/* таблица не сжимается в нечитаемые колонки: если панель уже —
+   крутится таблица внутри панели, а не страница целиком */
+.a-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px;}
+.a-table-dishes{min-width:780px;}
+.a-table-clients{min-width:820px;}
+.a-table .nw{white-space:nowrap;}
 .a-table th{
   text-align:left;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--muted);font-weight:600;padding:0 10px 10px;border-bottom:1px solid var(--line-soft);
@@ -721,6 +729,25 @@ body[data-mode="admin"] .tb-size{display:none;}
 .a-table td{padding:12px 10px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
 .a-table tr:last-child td{border-bottom:0;}
 .a-table .thumb{width:42px;height:42px;border-radius:10px;object-fit:cover;}
+
+/* широкие таблицы на телефоне заменяем карточками */
+.a-cards{display:none;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));}
+.a-card{background:var(--surface-2);border-radius:14px;padding:12px;display:flex;gap:12px;}
+.a-card-col{display:block;}
+.a-card.is-stopped{opacity:.6;}
+.a-card-thumb{width:56px;height:56px;border-radius:12px;object-fit:cover;flex:none;}
+.a-card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
+.a-card-title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:14.5px;}
+.a-card-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;}
+
+/* фото блюда: превью и загрузка своего снимка */
+.a-photo{display:flex;gap:14px;align-items:flex-start;margin-top:12px;}
+.a-photo-preview{
+  width:84px;height:84px;flex:none;border-radius:14px;object-fit:cover;
+  background:var(--surface-2);border:1px solid var(--line-soft);
+}
+.a-photo-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
+.a-photo-title{font-size:12.5px;font-weight:600;color:var(--soft);}
 .a-pill{
   display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 11px;
   font-size:12px;font-weight:600;background:var(--surface-2);color:var(--soft);
@@ -743,6 +770,11 @@ body[data-mode="admin"] .tb-size{display:none;}
 .row-star{display:inline-flex;align-items:center;gap:8px;}
 .row-star .ic{width:16px;height:16px;color:var(--lime);}
 .a-row{display:flex;gap:8px;flex-wrap:wrap;}
+/* в таблице кнопки действий держатся в одну строку: перенос в столбик делал строку втрое выше картинки */
+.a-table .a-row{flex-wrap:nowrap;}
+/* одинаковая ширина кнопки стоп-листа: иначе таблица прыгает при переключении статуса */
+.a-table-dishes .a-btn-stop{min-width:132px;}
+.a-table-dishes .a-pill{min-width:78px;justify-content:center;}
 /* кнопка сохранения блюда остаётся под рукой, пока форма заполняется */
 .dish-form-actions{
   position:sticky;bottom:0;z-index:3;margin-top:12px;padding:10px 0 2px;
@@ -1048,7 +1080,6 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 @container admin (max-width:760px){
   /* таблица шире панели: пусть крутится она, а не вся страница */
   .a-panel{overflow-x:auto;}
-  .a-table{min-width:560px;}
   .a-grid-3{grid-template-columns:repeat(2,minmax(0,1fr));}
   .a-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
   .a-tabs::-webkit-scrollbar{display:none;}
@@ -1057,6 +1088,11 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 
 @container admin (max-width:560px){
   .a-orders{grid-template-columns:minmax(0,1fr);}
+  /* широкие таблицы на телефоне читаются карточками */
+  .a-table-dishes,.a-table-clients,.a-table-promos,.a-table-qr,.a-table-report,.a-table-import{display:none;}
+  .a-cards{display:grid;grid-template-columns:minmax(0,1fr);}
+  .a-photo{flex-direction:column;}
+  .a-photo-preview{width:100%;height:150px;}
   /* вкладки в одну строку прятали бы последнюю: переносим, чтобы все статусы были на виду */
   .a-tabs{flex-wrap:wrap;overflow:visible;scrollbar-width:auto;}
   .a-stat{padding:14px 15px;}
