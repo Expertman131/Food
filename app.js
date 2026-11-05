@@ -123,6 +123,8 @@ const TABS = [
 ];
 
 const dishById = id => DISHES.find(d => d.id === id);
+/* Карточка блюда открывается и из списка экранов, где блюдо не выбрано — берём первое доступное */
+const defaultDish = () => DISHES.find(d => d.available !== false && d.popular) || DISHES.find(d => d.available !== false) || DISHES[0];
 const lineKey = (dishId, mods) => dishId + '|' + mods.slice().sort().join(',');
 const cartLines = () => Object.values(state.cart);
 const cartCount = () => cartLines().reduce((s,l) => s + l.qty, 0);
@@ -237,8 +239,14 @@ function seedOrders(){
 /* -------------------------------- роутер -------------------------------- */
 
 function go(name, opts = {}){
-  if (opts.dishId) state.productId = opts.dishId;
+  if (opts.dishId){
+    /* модификаторы у блюд общие по id («острое», «авокадо»), поэтому при переходе
+       на другое блюдо выбор сбрасываем — иначе доплата переезжает вместе с ним */
+    if (opts.dishId !== state.productId) state.productMods = [];
+    state.productId = opts.dishId;
+  }
   if (opts.mods)  state.productMods = opts.mods;
+  if (name === 'product' && !opts.dishId && !dishById(state.productId)) state.productId = defaultDish().id;
   if (opts.from !== false && state.screen !== name){
     state.stack.push({ screen: state.screen, scroll: $('#viewport').scrollTop });
   }
@@ -504,7 +512,9 @@ function filterDishes(){
 
 function scrProduct(){
   const d = dishById(state.productId);
-  if (!d) return `<div class="empty">Блюдо не найдено</div>`;
+  if (!d) return `<div class="empty">Блюдо не найдено
+    <button class="btn-outline" style="margin-top:14px" data-act="go" data-screen="catalog">Открыть меню</button>
+  </div>`;
   const key = lineKey(d.id, state.productMods);
   const inCart = state.cart[key];
   const out = !dishAvailable(d);
