@@ -529,10 +529,13 @@ body[data-mode="admin"] .tb-size{display:none;}
 .profile-mail{font-size:13.5px;color:var(--muted);margin-top:4px;}
 .profile-role{display:inline-flex;align-items:center;gap:8px;color:var(--lime);font-size:13.5px;font-weight:600;margin-top:12px;}
 .profile-role .ic{width:18px;height:18px;}
-.bonus-bar{height:7px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin:16px 0 8px;}
-.bonus-bar i{display:block;height:100%;border-radius:999px;background:var(--lime);}
-.bonus-val{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);}
-.bonus-val b{color:var(--lime);font-weight:700;}
+.bonus-balance{display:flex;align-items:baseline;gap:9px;margin-top:18px;color:var(--lime);}
+.bonus-balance b{font-size:38px;line-height:1;letter-spacing:-.04em;}
+.bonus-balance span{font-size:15px;font-weight:600;}
+.bonus-history{border-top:1px solid var(--line-soft);margin-top:14px;padding-top:12px;}
+.bonus-history .sum-row{font-size:12.5px;padding:7px 0;}
+.bonus-history .sum-row small{display:block;color:var(--muted);font-size:11.5px;margin-top:3px;}
+.bonus-history .ic{width:15px;height:15px;vertical-align:-3px;margin-right:5px;}
 
 /* ---------- избранное ---------- */
 .fav-head{
@@ -759,7 +762,49 @@ body[data-mode="admin"] .tb-size{display:none;}
 .a-photo-title{font-size:12.5px;font-weight:600;color:var(--soft);}
 .a-labeled{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12px;color:var(--soft);}
 .a-labeled .input-plain{width:100%;}
+/* форма блюда: подпись над каждым полем, две равные колонки.
+   Раньше часть полей шла с подписью, часть по placeholder — ряды
+   получались разной высоты, и поля в строке не совпадали.
+   Название — во всю ширину: его читают и правят чаще всего */
+.dish-fields{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 10px;align-items:start;}
+.dish-fields > .a-labeled:first-child{grid-column:1 / -1;}
+.a-badge-field{margin-top:12px;}
+.a-badge-presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.a-badge-preset{
+  min-height:44px;padding:9px 14px;border:1px solid var(--line-soft);border-radius:999px;
+  background:var(--surface-2);color:var(--soft);font-size:12.5px;cursor:pointer;
+}
+.a-badge-preset:hover{border-color:var(--lime);color:var(--text);}
+.a-badge-preset.is-active{border-color:var(--lime);background:rgba(198,241,110,.13);color:var(--lime);}
 .a-form-note{margin:10px 0 0;font-size:12px;line-height:1.5;color:var(--muted);}
+.a-form-error{margin-top:10px;font-size:12px;line-height:1.5;color:var(--danger);}
+.a-stock{width:100%;margin-top:4px;border-top:1px solid var(--line-soft);padding-top:8px;}
+.a-stock summary{min-height:44px;display:flex;align-items:center;cursor:pointer;color:var(--soft);font-size:12.5px;font-weight:600;}
+.a-stock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;margin-top:6px;}
+.a-stock-image{padding:3px;min-height:48px;border:1px solid var(--line-soft);border-radius:11px;background:var(--surface-2);cursor:pointer;}
+.a-stock-image img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;}
+.a-stock-image.is-active{border-color:var(--lime);box-shadow:0 0 0 1px var(--lime);}
+.a-stock-banners{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));}
+.a-stock-banners .a-stock-image img{aspect-ratio:2/1;}
+.a-menu-import summary{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:44px;cursor:pointer;list-style:none;}
+.a-menu-import summary::-webkit-details-marker{display:none;}
+.a-menu-import summary::after{content:'+';flex:none;color:var(--lime);font-size:22px;font-weight:400;}
+.a-menu-import[open] summary::after{content:'−';}
+.a-menu-import summary span{display:flex;flex-direction:column;gap:5px;}
+.a-menu-import summary b{font-size:15px;}
+.a-menu-import summary small{font-size:12.5px;font-weight:400;color:var(--muted);line-height:1.4;}
+.a-import-body{border-top:1px solid var(--line-soft);margin-top:12px;padding-top:14px;}
+.a-push-preview{display:flex;flex-direction:column;align-items:flex-start;gap:7px;margin-top:14px;padding:14px;border:1px solid var(--line-soft);border-radius:15px;background:var(--surface-2);}
+.a-push-brand{display:flex;align-items:center;gap:6px;width:100%;font-size:12px;color:var(--muted);}
+.a-push-brand .ic{width:15px;height:15px;}
+.a-push-brand span{margin-left:auto;}
+.a-push-preview b{font-size:14px;line-height:1.35;}
+.a-push-preview p{margin:0;font-size:13px;color:var(--soft);line-height:1.45;overflow-wrap:anywhere;}
+/* получатели и кнопка отправки: между ними был нулевой зазор,
+   строка слипалась с кнопкой — разводим по вертикальному ритму */
+.a-push-recipients{margin:14px 0 0;font-size:12.5px;color:var(--soft);}
+.a-push-send{margin-top:12px;}
+.a-btn:disabled{opacity:.45;cursor:not-allowed;}
 .a-banner-row{display:flex;gap:12px;align-items:flex-start;}
 .a-banner-thumb{width:112px;aspect-ratio:2/1;object-fit:cover;border-radius:10px;flex:none;background:var(--surface-2);}
 .a-banner-info{flex:1;min-width:0;}
@@ -802,7 +847,13 @@ body[data-mode="admin"] .tb-size{display:none;}
 /* кнопка сохранения блюда остаётся под рукой, пока форма заполняется */
 .dish-form-actions{
   position:sticky;bottom:0;z-index:3;margin-top:12px;padding:10px 0 2px;
-  background:linear-gradient(180deg,rgba(21,27,20,0),var(--surface) 46%);
+  background:var(--surface);
+}
+/* текст под липкой кнопкой гас, а не просвечивал сквозь неё */
+.dish-form-actions::before{
+  content:'';position:absolute;left:0;right:0;bottom:100%;height:18px;
+  background:linear-gradient(180deg,rgba(21,27,20,0),var(--surface));
+  pointer-events:none;
 }
 
 .a-tabs{display:flex;gap:8px;margin-bottom:18px;}
@@ -1089,8 +1140,14 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
    min-content, поэтому широкая таблица раздувала бы ряд вместо внутренней прокрутки */
 
 @container admin (max-width:1100px){
-  .a-grid-split,.a-grid-2{grid-template-columns:minmax(0,1fr);}
+  .a-grid-split{grid-template-columns:minmax(0,1fr);}
   .a-grid-4{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+/* равные две колонки держатся до 860 px: на ноутбуке «Описание» и «Состав»
+   в одну колонку растягивали форму на пол-экрана */
+@container admin (max-width:860px){
+  .a-grid-2{grid-template-columns:minmax(0,1fr);}
 }
 
 @container admin (max-width:900px){
@@ -1113,11 +1170,19 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
   .a-tabs button{flex:none;}
 }
 
+/* Таблицы админки шире панели уже на 1140 px: колонка действий
+   («Стоп-лист», «Правка») уезжала за горизонтальную прокрутку и
+   терялась. Ниже этого порога показываем карточки — все кнопки видны сразу */
+@container admin (max-width:1140px){
+  .a-table-dishes,.a-table-clients,.a-table-promos,.a-table-qr,.a-table-report,.a-table-import,.a-table-menu-import{display:none;}
+  .a-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
 @container admin (max-width:560px){
   .a-orders{grid-template-columns:minmax(0,1fr);}
-  /* широкие таблицы на телефоне читаются карточками */
-  .a-table-dishes,.a-table-clients,.a-table-promos,.a-table-qr,.a-table-report,.a-table-import{display:none;}
-  .a-cards{display:grid;grid-template-columns:minmax(0,1fr);}
+  /* карточки в одну колонку */
+  .a-cards{grid-template-columns:minmax(0,1fr);}
+  .dish-fields{grid-template-columns:minmax(0,1fr);}
   .a-photo{flex-direction:column;}
   .a-photo-preview{width:100%;height:150px;}
   .a-banner-row{flex-direction:column;}

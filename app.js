@@ -142,6 +142,114 @@ const isFav = id => state.favorites.includes(id);
 const favDishes = () => state.favorites.map(dishById).filter(Boolean);
 const minOrderLeft = () => Math.max(0, RULES.minOrder - cartSubtotal());
 
+const bonusClient = phone => ADMIN_CLIENTS.find(c => normPhone(c.phone) === normPhone(phone));
+const currentBonusClient = () => bonusClient(state.user.phone);
+
+/* Срок списания: начисленные баллы живут bonusExpiryMonths месяцев.
+   Лоты — каждое начисление отдельно: при списании берутся те, что сгорят раньше,
+   а по истечении срока лот вычитается из баланса один раз */
+const bonusExpiryMonths = () => Math.max(0, Number(RULES.bonusExpiryMonths) || 0);
+function bonusExpiryAt(from = new Date()){
+  const months = bonusExpiryMonths();
+  if (!months) return 0;
+  const d = new Date(from.getTime());
+  d.setMonth(d.getMonth() + months);
+  return d.getTime();
+}
+const bonusDateText = ts => ts
+  ? new Date(ts).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' })
+  : '';
+
+function ensureBonusLots(client){
+  if (!client) return [];
+  if (!client.lots){
+    client.lots = [];
+    const legacy = Number(client.bonus) || 0;
+    if (legacy > 0) client.lots.push({ amount:legacy, expiresAt:bonusExpiryAt(), used:0 });
+  }
+  return client.lots;
+}
+
+/* Баллы с истёкшим сроком уходят с баланса и попадают в историю */
+function burnExpiredBonus(client){
+  const lots = ensureBonusLots(client);
+  const now = Date.now();
+  let burned = 0;
+  lots.forEach(lot => {
+    if (lot.burned || !lot.expiresAt || lot.expiresAt >= now) return;
+    const left = Math.max(0, lot.amount - (lot.used || 0));
+    if (!left) return;
+    lot.burned = true;
+    burned += left;
+  });
+  if (!burned) return 0;
+  client.bonus = Math.max(0, (Number(client.bonus)||0) - burned);
+  client.history = client.history || [];
+  client.history.unshift({ amount:-burned, title:'Срок списания истёк', orderNo:'', date:nowRu() });
+  return burned;
+}
+
+function bonusBalance(){
+  const client = currentBonusClient();
+  if (!client) return 0;
+  burnExpiredBonus(client);
+  return Math.max(0, Number(client.bonus) || 0);
+}
+const bonusHistory = () => currentBonusClient()?.history || [];
+
+/* Списание забирает баллы из тех лотов, которые сгорят раньше */
+function spendBonusLots(client, amount){
+  const lots = ensureBonusLots(client).filter(l => !l.burned)
+    .sort((a,b) => (a.expiresAt || Infinity) - (b.expiresAt || Infinity));
+  let left = amount;
+  for(const lot of lots){
+    if (left <= 0) break;
+    const rest = Math.max(0, lot.amount - (lot.used || 0));
+    const take = Math.min(rest, left);
+    lot.used = (lot.used || 0) + take;
+    left -= take;
+  }
+}
+
+function addBonusEntry(client, amount, title, order){
+  if (!client || !amount) return;
+  const value = Math.round(amount);
+  ensureBonusLots(client);
+  client.bonus = Math.max(0, (Number(client.bonus)||0) + value);
+  const expiresAt = value > 0 ? bonusExpiryAt() : 0;
+  if (value > 0) client.lots.push({ amount:value, expiresAt, used:0 });
+  else spendBonusLots(client, -value);
+  client.history = client.history || [];
+  client.history.unshift({ amount:value, title, orderNo:order?.no || '', date:nowRu(), expiresAt });
+}
+
+function redeemOrderBonus(order){
+  if (!order || order.bonusRedeemed || !(order.bonus > 0)) return;
+  const client = bonusClient(order.phone);
+  if (!client) return;
+  addBonusEntry(client, -Math.min(order.bonus, client.bonus), 'Оплата заказа', order);
+  order.bonusRedeemed = true;
+}
+
+function refundOrderBonus(order){
+  if (!order || !order.bonusRedeemed || order.bonusRefunded) return;
+  addBonusEntry(bonusClient(order.phone), order.bonus, 'Возврат за отмену заказа', order);
+  order.bonusRefunded = true;
+}
+
+function accrueOrderBonus(order){
+  if (!order || order.bonusCredited || !(order.bonusEarn > 0)) return;
+  addBonusEntry(bonusClient(order.phone), order.bonusEarn, 'Кэшбэк за заказ', order);
+  order.bonusCredited = true;
+}
+
+function setOrderStatus(order, status){
+  if (!order) return;
+  order.status = status;
+  if (status === 'done') accrueOrderBonus(order);
+  if (DEAD_STATUSES.includes(status)) refundOrderBonus(order);
+}
+
 /* Допродажи: блюда, которые чаще всего берут вместе с уже выбранными */
 function upsellIds(){
   const inCart = new Set(cartLines().map(l => l.dishId));
@@ -216,8 +324,10 @@ function totals(){
   }
   const base = Math.max(0, sub - discount);
   const bonusMax = Math.floor(base * RULES.bonusMaxPay / 100);
-  const bonusUse = Math.min(state.bonusUse, bonusMax);
-  return { sub, delivery, discount, bonusUse, bonusMax, total: Math.max(0, base + delivery - bonusUse) };
+  const bonusAvailable = RULES.bonusEnabled && state.deliveryType !== 'table'
+    ? Math.min(bonusBalance(), bonusMax) : 0;
+  const bonusUse = Math.min(state.bonusUse, bonusAvailable);
+  return { sub, delivery, discount, bonusUse, bonusMax, bonusAvailable, total: Math.max(0, base + delivery - bonusUse) };
 }
 
 function nowRu(){
@@ -335,7 +445,7 @@ function dishCard(d, showBadge = true){
   <article class="pcard ${out?'is-out':''}" data-act="open-dish" data-dish="${d.id}" tabindex="0" role="button" aria-label="${d.name}, ${fmt(dishPrice(d))}">
     <div class="pcard-img">
       <img src="${d.img}" alt="${d.name}" loading="lazy">
-      ${(showBadge && d.badge && !out) ? `<span class="pcard-badge">${d.badge}</span>` : ''}
+      ${(showBadge && d.badge && !out) ? `<span class="pcard-badge">${esc(d.badge)}</span>` : ''}
       ${out ? `<span class="pcard-out">Нет в наличии</span>` : ''}
       <button class="fav-btn ${fav?'is-on':''}" data-act="fav" data-dish="${d.id}"
         aria-label="${fav?'Убрать из избранного':'В избранное'}" aria-pressed="${fav}">${icon(fav?'heartFill':'heart')}</button>
@@ -535,7 +645,7 @@ function scrProduct(){
   ${appBar('Из нашего меню')}
   <div class="pdp-hero">
     <img src="${d.img}" alt="${d.name}">
-    ${d.badge && !out ? `<span class="pdp-badge">${d.badge}</span>` : ''}
+    ${d.badge && !out ? `<span class="pdp-badge">${esc(d.badge)}</span>` : ''}
     <button class="fav-btn pdp-fav ${fav?'is-on':''}" data-act="fav" data-dish="${d.id}"
       aria-label="${fav?'Убрать из избранного':'В избранное'}" aria-pressed="${fav}">${icon(fav?'heartFill':'heart')}</button>
   </div>
@@ -931,16 +1041,27 @@ function scrPayment(){
   </section>
 
   <section class="section">
-    <div class="section-head"><h2 class="h2">Бонусы «Васаби»</h2><span class="count">баланс 0 ${NBSP}баллов</span></div>
+    <div class="section-head"><h2 class="h2">Бонусы «Васаби»</h2><span class="count">${bonusBalance()} ${plural(bonusBalance(),'балл','балла','баллов')}</span></div>
     <div class="card">
-      <p class="small soft">Программа лояльности iiko: баланс недоступен — нет подключения к iiko. Начисления и списания не выполняются.</p>
-      <div class="bonus-bar"><i style="width:0%"></i></div>
-      <div class="bonus-val"><span>Доступно к списанию:</span><b>${fmt(t.bonusMax)}</b><span>(${RULES.bonusMaxPay}% от суммы)</span></div>
+      ${RULES.bonusEnabled ? `
+        <p class="small soft">1 балл = 1 ₽. Кэшбэк ${RULES.bonusAccrual}% начислим после выполнения заказа.${bonusExpiryMonths() ? ` Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>
+        ${state.deliveryType === 'table' ? '<p class="muted small" style="margin-top:12px">За заказ к столу без аккаунта баллы не начисляются и не списываются.</p>' : `
+          <div class="pay-row ${t.bonusUse?'is-on':''}" ${t.bonusAvailable?'data-act="bonus-toggle" role="button" tabindex="0"':''} aria-pressed="${t.bonusUse>0}" style="margin-top:12px">
+            <div class="pay-icon">${icon('gift')}</div>
+            <div class="grow">
+              <div class="pay-name">${t.bonusUse ? 'Не списывать бонусы' : 'Списать ' + t.bonusAvailable + ' ' + plural(t.bonusAvailable,'балл','балла','баллов')}</div>
+              <div class="pay-note">${t.bonusAvailable ? 'Доступно на этот заказ: ' + fmt(t.bonusAvailable) : 'Для списания пока нет доступных баллов'}</div>
+            </div>
+            <span class="radio"></span>
+          </div>
+          <p class="hint" style="margin-top:10px">Можно оплатить до ${RULES.bonusMaxPay}% суммы блюд после промокода. Доставка баллами не оплачивается.${bonusExpiryMonths() ? ` Срок списания начисленных баллов — ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>`}
+      ` : '<p class="small soft">Бонусная программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
+      <p class="muted small" style="margin-top:12px">Демо-счёт в этой вкладке · не связан с iiko</p>
     </div>
   </section>
 
   <section class="section">
-    <div class="notice">${icon('info')}<span>Оплата проходит через защищённый шлюз ЮKassa. Данные карты не хранятся на нашей стороне — используется токен.</span></div>
+    <div class="notice">${icon('info')}<span>Демо-оплата: деньги не списываются, банковские данные не запрашиваются. Для запуска нужен эквайринг ЮKassa или СБП.</span></div>
   </section>
 
   <div class="pdp-bar">
@@ -1010,6 +1131,8 @@ function scrStatus(){
         ${order.items.map(i => `<div class="sum-row"><span>${i.name} × ${i.qty}</span><span class="val">${fmt(i.price*i.qty)}</span></div>`).join('')}
         <div class="sum-row"><span>${isTable ? 'Обслуживание за столом' : 'Доставка'}</span><span class="val ${order.delivery===0?'free-tag':''}">${order.delivery===0?'Бесплатно':fmt(order.delivery)}</span></div>
         <div class="sum-row is-total"><span class="lbl">Итого</span><span class="val">${fmt(order.total)}</span></div>
+        ${order.bonus ? `<div class="sum-row"><span>Списано баллов</span><span class="val">${order.bonus}</span></div>` : ''}
+        ${order.bonusEarn ? `<div class="sum-row"><span>Кэшбэк</span><span class="val free-tag">${order.bonusCredited ? '+' + order.bonusEarn + ' начислено' : '+' + order.bonusEarn + ' после выполнения'}</span></div>` : ''}
       </div>
     </div>
   </section>
@@ -1048,6 +1171,7 @@ function scrStatusRejected(order){
         ? 'Оплата не списывалась. Если средства заблокированы, они разблокируются автоматически в течение 1–3 рабочих дней.'
         : 'Оплата не списывалась. Если средства заблокированы, они разблокируются автоматически в течение 1–3 рабочих дней.'}</p>
       <div class="sum-row is-total"><span class="lbl">Возврат</span><span class="val">${fmt(order.total)}</span></div>
+      ${order.bonusRefunded ? `<p class="ok" style="margin-top:10px">${order.bonus} ${plural(order.bonus,'балл','балла','баллов')} возвращено на бонусный счёт.</p>` : ''}
       <p class="muted small" style="margin-top:8px">Если возврат не пришёл за 3 дня — напишите в поддержку, разберём заказ вручную.</p>
     </div>
   </section>
@@ -1111,6 +1235,8 @@ function scrOrders(){
 }
 
 function scrProfile(){
+  const balance = bonusBalance();
+  const history = bonusHistory();
   return `
   ${appHeader()}
   <section class="section" style="padding-top:4px">
@@ -1131,13 +1257,19 @@ function scrProfile(){
         <h2 class="h2">Бонусы «Васаби»</h2>
         <span style="color:var(--lime)">${icon('gift')}</span>
       </div>
-      <p class="muted small" style="margin-top:4px">Программа лояльности iiko</p>
-      <div class="bonus-bar"><i style="width:2%"></i></div>
-      <div class="bonus-val"><span>0</span><span>баллов</span></div>
-      <p class="muted small" style="margin-top:12px">Баланс недоступен: нет подключения к iiko. Начисления и списания не выполняются.</p>
-      <div style="border-top:1px solid var(--line-soft);margin-top:14px;padding-top:14px">
-        <p class="muted small">${icon('clock')} История баллов появится после подключения к iiko.</p>
+      <p class="muted small" style="margin-top:4px">Кэшбэк с заказов · 1 балл = 1 ₽</p>
+      <div class="bonus-balance"><b>${balance}</b><span>${plural(balance,'балл','балла','баллов')}</span></div>
+      ${RULES.bonusEnabled
+        ? `<p class="muted small" style="margin-top:10px">Возвращаем ${RULES.bonusAccrual}% от суммы блюд после промокода. Баллами можно оплатить до ${RULES.bonusMaxPay}% следующего заказа. ${bonusExpiryMonths() ? `Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')} после начисления.` : 'Баллы не сгорают.'}</p>`
+        : '<p class="muted small" style="margin-top:10px">Программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
+      <div class="bonus-history">
+        ${history.length ? history.slice(0,3).map(entry => `
+          <div class="sum-row">
+            <span><b>${esc(entry.title)}</b>${entry.orderNo ? `<small>Заказ №${esc(entry.orderNo)}</small>` : ''}${entry.expiresAt ? `<small>Сгорает ${bonusDateText(entry.expiresAt)}</small>` : ''}</span>
+            <span class="val ${entry.amount>0?'free-tag':''}">${entry.amount>0?'+':'−'}${Math.abs(entry.amount)}</span>
+          </div>`).join('') : `<p class="muted small">${icon('clock')} Здесь появятся начисления и списания.</p>`}
       </div>
+      <p class="muted small" style="margin-top:12px">Демо-баланс в этой вкладке, без синхронизации с iiko. После перезагрузки вернутся исходные данные.</p>
     </div>
   </section>
   <section class="section">
@@ -1275,7 +1407,7 @@ function scrRestaurant(){
     <div class="card" style="text-align:center">
       <div class="pay-icon" style="margin:0 auto 12px">${icon('qr')}</div>
       <h2 class="h2">QR-меню в зале</h2>
-      <p class="muted small" style="margin-top:6px">Отдельный канал заказа с QR-кода на столе: без регистрации и скидка 5% на бонусный счёт.</p>
+      <p class="muted small" style="margin-top:6px">Отдельный канал заказа с QR-кода на столе: без регистрации; бонусный счёт к такому заказу не привязывается.</p>
       <button class="btn-outline" style="margin-top:14px" data-act="open-qr-menu"><span>Открыть QR-меню</span>${icon('arrowRight')}</button>
     </div>
   </section>`;
@@ -1470,7 +1602,7 @@ function advanceStatus(){
   const flow = flowFor(order);
   const idx = flow.findIndex(s => s.key === order.status);
   if (idx < 0 || idx >= flow.length - 1) return;
-  order.status = flow[idx + 1].key;
+  setOrderStatus(order, flow[idx + 1].key);
   toast('Статус заказа: ' + flow[idx + 1].title);
   render();
 }
@@ -1495,11 +1627,11 @@ const FEATURE_GROUPS = [
     'Вход по SMS: экран с кодом есть, но гость попадает на него только из списка экранов'
   ]},
   { title:'Админ-панель', items:[
-    'Меню: создание и правка блюда, метки и скидки, своё фото, стоп-лист',
+    'Меню: создание и правка блюда, метки и скидки, своё фото, стоп-лист, CSV-импорт',
     '«На главной»: какие блюда попадают в ленту любимого (до 6)',
-    'Маркетинг: промокоды с минимальной суммой, правка акций и свои баннеры 1600 × 800',
+    'Маркетинг: промокоды, настройка кэшбэка и списания баллов, свои баннеры, демо-push',
     'Заказы: приём, статусы, отклонение с причиной',
-    'Клиенты: начисление бонусов, удаление, импорт базы из старой CRM',
+    'Клиенты: автоматически из заказов, импорт из CRM, источники, бонусы и удаление',
     'QR-меню: ссылки на столы, PNG для печати, листы A4',
     'Аналитика: выручка, средний чек, доставка против самовывоза, выгрузка CSV и Excel',
     'Настройки: доставка, добавление и правка точек, сотрудники и роли (демо)',
@@ -1750,6 +1882,11 @@ const ACTIONS = {
     render();
   },
   'copy-promo': (el) => applyPromoCode(el.dataset.code),
+  'bonus-toggle': () => {
+    const t = totals();
+    state.bonusUse = t.bonusUse > 0 ? 0 : t.bonusAvailable;
+    render();
+  },
   'open-banner': (el) => {
     const b = BANNERS.find(x => x.id === el.dataset.banner);
     if (!b) return;
@@ -1769,6 +1906,7 @@ const ACTIONS = {
         id:'o'+Date.now(), no: Math.random().toString(36).slice(2,8), date: nowRu(),
         items: cartLines().map(l => ({ dishId:l.dishId, name:dishById(l.dishId).name, qty:l.qty, price:lineUnit(l), mods:l.mods })),
         sub:t.sub, delivery:t.delivery, discount:t.discount, bonus:t.bonusUse, total:t.total,
+        bonusEarn:RULES.bonusEnabled && state.deliveryType !== 'table' ? Math.floor(Math.max(0, t.sub - t.discount) * RULES.bonusAccrual / 100) : 0,
         status:'new',
         deliveryType: state.deliveryType,
         locationId: state.deliveryType === 'table' ? state.table.locId : state.locationId,
@@ -1778,9 +1916,13 @@ const ACTIONS = {
         address: state.deliveryType === 'table'
           ? `Стол ${state.table.no} · ${locById(state.table.locId).name}`
           : state.deliveryType === 'pickup' ? LOCATIONS.find(l=>l.id===state.locationId).address : state.address,
-        comment: state.comment, payment: state.payMethod, promo: state.promo
+        comment: state.comment, payment: state.payMethod, promo: state.promo,
+        customer: state.deliveryType === 'table' ? 'Гость стола ' + state.table.no : state.user.name,
+        phone: state.deliveryType === 'table' ? '' : state.user.phone
       };
       state.orders.unshift(order);
+      recordClientOrder(order);
+      redeemOrderBonus(order);
       state.currentOrderId = order.id;
       state.cart = {};
       state.promo = null; state.promoInput = ''; state.promoMsg = ''; state.bonusUse = 0;
@@ -1799,7 +1941,7 @@ const ACTIONS = {
     const o = state.orders.find(x => x.id === el.dataset.id);
     if (!o) return;
     if (o.status !== 'new'){ toast('Заказ уже принят в работу — отменить нельзя'); return; }
-    o.status = 'cancelled';
+    setOrderStatus(o, 'cancelled');
     o.rejectReason = 'Вы отменили заказ до того, как его приняли в работу.';
     state.autoStatus = false;
     toast('Заказ отменён');

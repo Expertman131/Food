@@ -143,12 +143,36 @@ const DISH_IMAGES = [
   'assets/tempura.jpg', 'assets/sashimi.jpg', 'assets/cheesecake.jpg', 'assets/latte.jpg'
 ];
 
+/* Телефоны сравниваются по цифрам: «+7 916 330-12-04» и «89163301204» — один гость */
+function normPhone(raw){
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1);
+  if (d.length === 10) d = '7' + d;
+  return d;
+}
+function formatPhone(digits){
+  if (!digits || digits.length !== 11) return digits;
+  return '+7 ' + digits.slice(1,4) + ' ' + digits.slice(4,7) + '-' + digits.slice(7,9) + '-' + digits.slice(9,11);
+}
+
+/* Единый демо-счёт гостя: профиль, оплата и база клиентов читают один баланс. */
+const ADMIN_CLIENTS = [
+  { name:'Сергей',   phone:'+7 900 000-00-01', orders:12, sum:14890, bonus:742, segment:'Постоянный', last:'сегодня', history:[] },
+  { name:'Анна',     phone:'+7 916 330-12-04', orders:7,  sum:8240,  bonus:412, segment:'Постоянный', last:'вчера', history:[] },
+  { name:'Дмитрий',  phone:'+7 903 118-77-21', orders:3,  sum:3170,  bonus:158, segment:'Новый',       last:'3 дня назад', history:[] },
+  { name:'Мария',    phone:'+7 985 402-19-55', orders:1,  sum:1690,  bonus:84,  segment:'Новый',       last:'неделя назад', history:[] },
+  { name:'Ольга',    phone:'+7 926 640-08-31', orders:19, sum:24310, bonus:1215,segment:'VIP',         last:'2 дня назад', history:[] },
+  { name:'Игорь',    phone:'+7 891 003-92-44', orders:2,  sum:1580,  bonus:79,  segment:'Спящий',      last:'3 недели назад', history:[] }
+];
+
 const RULES = {
   deliveryPrice: 199,
   freeDeliveryFrom: 1500,
   minOrder: 300,
-  bonusAccrual: 5,      // % начисления бонусов за заказ
-  bonusMaxPay: 30,      // максимум оплаты бонусами, % от суммы
+  bonusEnabled: true,
+  bonusAccrual: 5,      // % кэшбэка от блюд после промокода, без доставки
+  bonusMaxPay: 30,      // максимум оплаты бонусами, % от суммы блюд после промокода
+  bonusExpiryMonths: 12, // срок списания начисленных баллов, месяцев (0 — не сгорают)
   prepTime: '45–60 мин',
   prepTable: '20–25 мин к столу',   // заказ из QR-меню в зале
   leadDelivery: 60,     // минут от заказа до готовности при доставке
@@ -197,8 +221,8 @@ const BANNERS = [
   {
     id: 'b-bonus', kind: 'screen', screen: 'profile', active: true,
     tag: 'Бонусы', img: 'assets/cheesecake.jpg',
-    title: 'Бонус 5% за каждый заказ.',
-    sub: 'Баллы iiko: баланс придёт с подключением кассы', cta: 'Где мои баллы'
+    title: 'Кэшбэк баллами с каждого заказа.',
+    sub: '1 балл = 1 ₽ · правила в профиле', cta: 'Мои бонусы'
   },
   {
     id: 'b-lunch', kind: 'dish', dish: 'd-phil', active: false,

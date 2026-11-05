@@ -29,6 +29,9 @@ const admin = {
   locationDraft: { id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' },
   staffDraft: { name:'', phone:'', role:'operator' },
   clientImport: { text:'', rows:null, errors:null, skipped:0 },
+  menuImport: { text:'', rows:null, errors:null },
+  pushDraft: { audience:'all', title:'', text:'', promo:'', when:'now', scheduleAt:'' },
+  pushLog: [],
   bonusFor: null,
   bonusAmount: 100,
   qr: { locId:'l1', from:1, to:8, ec:'M' },
@@ -36,27 +39,31 @@ const admin = {
     deliveryPrice: RULES.deliveryPrice,
     freeFrom: RULES.freeDeliveryFrom,
     minOrder: RULES.minOrder,
+    bonusEnabled: RULES.bonusEnabled,
     bonusPercent: RULES.bonusAccrual,
+    bonusMaxPay: RULES.bonusMaxPay,
+    bonusExpiryMonths: RULES.bonusExpiryMonths,
     prepTime: RULES.prepTime,
     autoAccept: false,
     sound: true
   }
 };
 
-const ADMIN_CLIENTS = [
-  { name:'Сергей',   phone:'+7 900 000-00-01', orders:12, sum:14890, bonus:742, segment:'Постоянный', last:'сегодня' },
-  { name:'Анна',     phone:'+7 916 330-12-04', orders:7,  sum:8240,  bonus:412, segment:'Постоянный', last:'вчера' },
-  { name:'Дмитрий',  phone:'+7 903 118-77-21', orders:3,  sum:3170,  bonus:158, segment:'Новый',       last:'3 дня назад' },
-  { name:'Мария',    phone:'+7 985 402-19-55', orders:1,  sum:1690,  bonus:84,  segment:'Новый',       last:'неделя назад' },
-  { name:'Ольга',    phone:'+7 926 640-08-31', orders:19, sum:24310, bonus:1215,segment:'VIP',         last:'2 дня назад' },
-  { name:'Игорь',    phone:'+7 891 003-92-44', orders:2,  sum:1580,  bonus:79,  segment:'Спящий',      last:'3 недели назад' }
-];
-
 const emptyDishDraft = () => ({
   id:null, name:'', cat:'rolls', price:'', salePercent:0, unit:'', badge:'',
   desc:'', composition:'', allergens:'', img:'assets/philadelphia.jpg',
   defaultImg:'assets/philadelphia.jpg', popular:false
 });
+const DISH_BADGE_PRESETS = ['Хит', 'Выбор шефа', 'Новинка', 'Горячий', 'Острое', 'Веган'];
+
+function syncDishBadgePresets(){
+  const current = (admin.dishDraft.badge || '').trim();
+  document.querySelectorAll('[data-act="admin-dish-badge"]').forEach(button => {
+    const active = (button.dataset.badge || '') === current;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
 
 const emptyBannerDraft = () => ({
   id:null, kind:'promo', tag:'', title:'', sub:'', cta:'Применить код',
@@ -66,17 +73,107 @@ const emptyBannerDraft = () => ({
 const emptyLocationDraft = () => ({ id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' });
 const roleLabel = id => (STAFF_ROLES[id] || STAFF_ROLES.operator).label;
 
-/* Телефоны сравниваются по цифрам: «+7 916 330-12-04» и «89163301204» — один гость */
-function normPhone(raw){
-  let d = String(raw || '').replace(/\D/g, '');
-  if (d.length === 11 && d[0] === '8') d = '7' + d.slice(1);
-  if (d.length === 10) d = '7' + d;
-  return d;
+const clientOrigin = c => (c.sources || [c.source || 'Демо']).join(' + ');
+function addClientSource(client, source){
+  const sources = new Set(client.sources || [client.source || 'Демо']);
+  sources.add(source);
+  client.sources = [...sources];
+  delete client.source;
 }
-function formatPhone(digits){
-  if (!digits || digits.length !== 11) return digits;
-  return '+7 ' + digits.slice(1,4) + ' ' + digits.slice(4,7) + '-' + digits.slice(7,9) + '-' + digits.slice(9,11);
+
+/* Заказ с телефоном пополняет базу; QR-заказ к столу без контактов гостя не создаёт. */
+function recordClientOrder(order){
+  if (!order || order.deliveryType === 'table') return;
+  const phone = normPhone(order.phone);
+  if (phone.length !== 11) return;
+  let client = ADMIN_CLIENTS.find(c => normPhone(c.phone) === phone);
+  if (!client){
+    client = {
+      name:(order.customer || '').trim() || 'Гость', phone:formatPhone(phone),
+      orders:0, sum:0, bonus:0, segment:'Новый', last:order.date, sources:[]
+    };
+    ADMIN_CLIENTS.push(client);
+  }
+  addClientSource(client, 'Заказ');
+  if ((order.customer || '').trim()) client.name = order.customer.trim();
+  client.orders = (Number(client.orders) || 0) + 1;
+  client.sum = (Number(client.sum) || 0) + Math.max(0, Number(order.total) || 0);
+  client.last = order.date || nowRu();
+  if (client.orders > 1 && client.segment === 'Новый') client.segment = 'Постоянный';
 }
+
+const normDishName = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const MENU_CSV_TEMPLATE = '\uFEFFНазвание;Категория;Цена;Скидка %;Вес;Метка;Описание;Состав;Аллергены;На главной\n'
+  + 'Темпура с креветкой;hot;690;10;6 шт. · 240 г;Новинка;Хрустящий ролл с креветкой;Креветка, рис, панко, соус спайси;рыба, глютен;да\n'
+  + 'Матча с юдзу;drinks;350;0;400 мл;;Освежающий напиток;Матча, юдзу, молоко;молоко;нет';
+
+/* В меню запятые встречаются в составе, поэтому разделитель только «;».
+   Кавычки вокруг ячейки поддерживаются, внутри них двойная кавычка экранируется парой. */
+function parseMenuLine(line){
+  const cells = [];
+  let cell = '', quoted = false;
+  for (let i = 0; i < line.length; i++){
+    const ch = line[i];
+    if (ch === '"'){
+      if (quoted && line[i + 1] === '"'){ cell += '"'; i++; }
+      else quoted = !quoted;
+    } else if (ch === ';' && !quoted){
+      cells.push(cell.trim()); cell = '';
+    } else cell += ch;
+  }
+  cells.push(cell.trim());
+  return { cells, unclosed:quoted };
+}
+
+function parseMenuCsv(text){
+  const rows = [], errors = [], seen = new Set();
+  const lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/);
+  lines.forEach((raw, idx) => {
+    const line = raw.trim();
+    if (!line) return;
+    const parsed = parseMenuLine(line);
+    const c = parsed.cells;
+    if (idx === 0 && /^(название|name|блюдо)$/i.test(c[0] || '') && /^(категория|category|cat)$/i.test(c[1] || '')) return;
+    if (parsed.unclosed){ errors.push('строка ' + (idx + 1) + ': не закрыта кавычка'); return; }
+    const name = (c[0] || '').trim();
+    const catText = (c[1] || '').trim().toLowerCase();
+    const cat = CATEGORIES.find(x => x.id !== 'all' && (x.id === catText || x.name.toLowerCase() === catText));
+    const price = Number((c[2] || '').replace(/\s/g, '').replace(',', '.'));
+    const salePercent = c[3] ? Number(String(c[3]).replace(',', '.')) : 0;
+    const key = normDishName(name);
+    if (!name){ errors.push('строка ' + (idx + 1) + ': нет названия'); return; }
+    if (!cat){ errors.push('строка ' + (idx + 1) + ': неизвестная категория «' + (c[1] || 'пусто') + '»'); return; }
+    if (!isFinite(price) || price <= 0){ errors.push('строка ' + (idx + 1) + ': цена должна быть больше нуля'); return; }
+    if (!isFinite(salePercent) || salePercent < 0 || salePercent > 90){ errors.push('строка ' + (idx + 1) + ': скидка — от 0 до 90%'); return; }
+    if (seen.has(key)){ errors.push('строка ' + (idx + 1) + ': блюдо повторяется в файле'); return; }
+    if (c.some(value => /[<>"]/.test(value))){ errors.push('строка ' + (idx + 1) + ': уберите <, > и двойные кавычки из текста'); return; }
+    seen.add(key);
+    const popular = /^(да|1|true|yes|\+)$/i.test((c[9] || '').trim());
+    rows.push({
+      name, cat:cat.id, price, salePercent,
+      unit:(c[4] || '').trim() || '1 порция', badge:(c[5] || '').trim(),
+      desc:(c[6] || '').trim(), composition:(c[7] || '').trim(),
+      allergens:(c[8] || '').split(',').map(s => s.trim()).filter(Boolean),
+      popular, duplicate:DISHES.some(d => normDishName(d.name) === key), warning:''
+    });
+  });
+  const featured = new Set(DISHES.filter(d => d.popular).map(d => normDishName(d.name)));
+  rows.forEach(r => {
+    const key = normDishName(r.name);
+    if (!r.popular){ featured.delete(key); return; }
+    if (featured.has(key)) return;
+    if (featured.size >= RULES.featuredMax){
+      r.popular = false;
+      r.warning = 'на главную не добавим: занято ' + RULES.featuredMax + ' мест';
+    } else featured.add(key);
+  });
+  return { rows, errors };
+}
+
+const MENU_DEMO_IMAGES = {
+  rolls:'assets/philadelphia.jpg', sushi:'assets/sashimi.jpg', sets:'assets/sushi-boat.jpg',
+  baked:'assets/philadelphia.jpg', hot:'assets/tempura.jpg', drinks:'assets/latte.jpg', desserts:'assets/cheesecake.jpg'
+};
 
 /* Разбор выгрузки гостей из старой CRM: разделитель «;» или «,»,
    первая строка может быть заголовком. Плохие строки не роняют весь файл. */
@@ -308,6 +405,8 @@ function adminOrders(){
         <div class="row">${icon('pin')} ${o.address}</div>
         <div class="row">${icon('clock')} ${o.slot ? slotFull(o.slot) : (o.deliveryType === 'table' ? `К столу · ${RULES.prepTable}` : (o.deliveryType === 'pickup' ? 'Самовывоз · как можно скорее' : 'Доставка · как можно скорее'))}</div>
         <div class="row">${icon('wallet')} ${o.payment==='sbp'?'СБП':(o.payment==='table'?'Оплата у стола':(o.payment==='cash'?'Наличные':'Карта онлайн'))}${o.promo?' · '+o.promo:''}</div>
+        ${o.bonus ? `<div class="row">${icon('gift')} Списано ${o.bonus} ${plural(o.bonus,'балл','балла','баллов')}${o.bonusRefunded?' · возвращены':''}</div>` : ''}
+        ${o.bonusEarn ? `<div class="row">${icon('gift')} Кэшбэк +${o.bonusEarn} · ${o.bonusCredited?'начислен':'после выполнения заказа'}</div>` : ''}
         ${o.comment ? `<div class="row">${icon('doc')} ${o.comment}</div>` : ''}
         ${o.rejectReason ? `<div class="row" style="color:#F2856B">${icon('info')} ${o.rejectReason}</div>` : ''}
       </div>
@@ -338,29 +437,37 @@ function adminMenu(){
   <div class="a-panel" id="dishForm" style="margin-bottom:18px">
     <h2>${admin.dishDraft.id ? 'Редактирование блюда' : 'Добавить блюдо в меню'}</h2>
     <p class="a-lead">Здесь управляются карточка и цена гостя. «Хит» или «Выбор шефа» — обычная метка; скидка в процентах уменьшает цену и показывает старую зачёркнутой.</p>
-    <div class="a-grid a-grid-3" style="gap:10px">
-      <input class="input-plain" id="dish-name" aria-label="Название блюда" data-act="admin-dish-draft" data-field="name" placeholder="Название, напр. Темпура с креветкой" value="${esc(admin.dishDraft.name)}">
-      <select class="input-plain" id="dish-cat" aria-label="Категория блюда" data-act="admin-dish-draft" data-field="cat">
+    <div class="a-grid dish-fields">
+      <label class="a-labeled" for="dish-name"><span>Название блюда</span><input class="input-plain" id="dish-name" data-act="admin-dish-draft" data-field="name" placeholder="Темпура с креветкой" value="${esc(admin.dishDraft.name)}"></label>
+      <label class="a-labeled" for="dish-cat"><span>Категория</span><select class="input-plain" id="dish-cat" data-act="admin-dish-draft" data-field="cat">
         ${CATEGORIES.filter(c => c.id !== 'all').map(c => `<option value="${c.id}" ${admin.dishDraft.cat===c.id?'selected':''}>${c.name}</option>`).join('')}
-      </select>
-      <label class="a-labeled"><span>Обычная цена, ₽</span><input class="input-plain" id="dish-price" type="number" min="1" inputmode="numeric" data-act="admin-dish-draft" data-field="price" placeholder="690" value="${admin.dishDraft.price}"></label>
-      <input class="input-plain" id="dish-unit" aria-label="Вес или количество" data-act="admin-dish-draft" data-field="unit" placeholder="Вес: 8 шт. · 260 г" value="${esc(admin.dishDraft.unit)}">
-      <label class="a-labeled"><span>Метка на карточке</span><input class="input-plain" id="dish-badge" list="dishBadgePresets" data-act="admin-dish-draft" data-field="badge" placeholder="Без метки" value="${esc(admin.dishDraft.badge)}"></label>
-      <datalist id="dishBadgePresets"><option value="Хит"></option><option value="Выбор шефа"></option><option value="Новинка"></option><option value="Горячий"></option><option value="Острое"></option><option value="Веган"></option></datalist>
-      <label class="a-labeled"><span>Скидка на блюдо, %</span><input class="input-plain" id="dish-discount" type="number" min="0" max="90" inputmode="numeric" data-act="admin-dish-draft" data-field="salePercent" value="${admin.dishDraft.salePercent || 0}"></label>
-      <select class="input-plain" id="dish-img" aria-label="Фото блюда" data-act="admin-dish-draft" data-field="img">
-        ${ownPhoto ? `<option value="${admin.dishDraft.img}" selected>— своё фото —</option>` : ''}
-        ${DISH_IMAGES.map(p => `<option value="${p}" ${admin.dishDraft.img===p?'selected':''}>${p.replace('assets/','')}</option>`).join('')}
-      </select>
+      </select></label>
+      <label class="a-labeled" for="dish-price"><span>Обычная цена, ₽</span><input class="input-plain" id="dish-price" type="number" min="1" inputmode="numeric" data-act="admin-dish-draft" data-field="price" placeholder="690" value="${admin.dishDraft.price}"></label>
+      <label class="a-labeled" for="dish-unit"><span>Вес или количество</span><input class="input-plain" id="dish-unit" data-act="admin-dish-draft" data-field="unit" placeholder="8 шт. · 260 г" value="${esc(admin.dishDraft.unit)}"></label>
+      <label class="a-labeled" for="dish-discount"><span>Скидка на блюдо, %</span><input class="input-plain" id="dish-discount" type="number" min="0" max="90" inputmode="numeric" data-act="admin-dish-draft" data-field="salePercent" value="${admin.dishDraft.salePercent || 0}"></label>
+    </div>
+    <div class="a-badge-field">
+      <label class="a-labeled" for="dish-badge"><span>Метка на карточке</span><input class="input-plain" id="dish-badge" maxlength="24" data-act="admin-dish-draft" data-field="badge" placeholder="Своя метка, напр. Соус в подарок" value="${esc(admin.dishDraft.badge)}"></label>
+      <div class="a-badge-presets" role="group" aria-label="Готовые метки">
+        ${['', ...DISH_BADGE_PRESETS].map(badge => `<button type="button" class="a-badge-preset ${admin.dishDraft.badge.trim()===badge?'is-active':''}" data-act="admin-dish-badge" data-badge="${esc(badge)}" aria-pressed="${admin.dishDraft.badge.trim()===badge}">${esc(badge || 'Без метки')}</button>`).join('')}
+      </div>
+      <p class="a-form-note">Нажмите готовую метку или впишите свою — до 24 символов. Она появится на карточке после сохранения блюда.</p>
     </div>
     <p class="a-form-note">Метка не меняет цену. Скидка действует на базовую цену блюда, доплаты за модификаторы не уменьшаются; 0 — без скидки. Промокод из раздела «Маркетинг» применяется дополнительно ко всей корзине.</p>
     <div class="a-photo">
       <img class="a-photo-preview" src="${admin.dishDraft.img}" alt="Фото блюда">
       <div class="a-photo-fields">
-        <label class="a-photo-title" for="dishPhoto">Своё фото блюда</label>
+        <label class="a-photo-title" for="dishPhoto">Фото блюда — загрузить своё</label>
         <input type="file" id="dishPhoto" class="a-file" accept="image/*" data-act="admin-dish-photo">
-        <div class="muted" style="font-size:12px">Снимок с телефона подойдёт: он обрежется по квадрату и ужмётся, чтобы страница не тормозила.</div>
-        ${ownPhoto ? '<button class="a-btn" data-act="admin-dish-photo-reset">Вернуть фото из набора</button>' : ''}
+        <div class="muted" style="font-size:12px">Лучше квадратный снимок от 900 × 900 px. Фото с телефона ужмётся до 900 px по ширине и появится в предпросмотре.</div>
+        ${ownPhoto ? '<button class="a-btn" data-act="admin-dish-photo-reset">Вернуть прежнее фото</button>' : ''}
+        <details class="a-stock">
+          <summary>Нет своего фото? Выбрать демо-изображение</summary>
+          <div class="a-stock-grid">
+            ${DISH_IMAGES.map((p, i) => `<button type="button" class="a-stock-image ${admin.dishDraft.img===p?'is-active':''}" data-act="admin-dish-stock" data-img="${p}" aria-label="Выбрать демо-фото ${i+1}" aria-pressed="${admin.dishDraft.img===p}"><img src="${p}" alt=""></button>`).join('')}
+          </div>
+          <p class="a-form-note">Демо-фото нужны только для макета. Перед запуском замените их настоящими снимками блюд.</p>
+        </details>
       </div>
     </div>
     <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
@@ -379,7 +486,41 @@ function adminMenu(){
     </div>
   </div>
 
-  <div class="a-grid a-grid-4" style="margin-bottom:18px">
+  <details class="a-panel a-menu-import" id="menuImport" ${admin.menuImport.rows || admin.menuImport.text ? 'open' : ''}>
+    <summary><span><b>Импорт меню из CSV или Excel</b><small>Загрузить сразу несколько блюд, сначала проверить предпросмотр</small></span></summary>
+    <div class="a-import-body">
+      <p class="a-lead">В Excel сохраните лист как «CSV UTF-8» с разделителем «;» или скачайте готовый шаблон. Дубликаты сверяются по названию: существующее блюдо обновится, новое добавится.</p>
+      <p class="a-form-note">Колонки: <code>Название;Категория;Цена;Скидка %;Вес;Метка;Описание;Состав;Аллергены;На главной</code>. Категорию можно указать кодом (<code>rolls</code>, <code>hot</code>) или названием («Роллы», «Горячее»). В последней колонке — «да» или «нет». Состав и аллергены пишутся через запятую внутри своей ячейки.</p>
+      <p class="a-form-note">Фото и модификаторы файл не переносит: новые позиции получат демо-фото по категории, после импорта загрузите свои снимки через редактирование. Это файловый импорт, а не прямая синхронизация с Foodpicasso или iiko.</p>
+      <div class="a-row" style="margin-top:12px">
+        <input type="file" class="a-file" accept=".csv,text/csv,text/plain" aria-label="Выбрать CSV-файл с меню" data-act="admin-menu-import-file">
+        <button class="a-btn" data-act="admin-menu-template">Скачать шаблон CSV</button>
+      </div>
+      <textarea class="input-plain" id="menuImportText" rows="4" style="margin-top:10px" aria-label="Данные меню, можно вставить текстом" data-act="admin-menu-import-text" placeholder="Название;Категория;Цена;Скидка %;Вес;Метка;Описание;Состав;Аллергены;На главной">${esc(admin.menuImport.text)}</textarea>
+      <div class="a-row" style="margin-top:12px">
+        <button class="a-btn" data-act="admin-menu-import-check">Проверить меню</button>
+        ${admin.menuImport.rows && admin.menuImport.rows.length ? `<button class="a-btn primary" id="menuImportApply" data-act="admin-menu-import-apply">Импортировать ${admin.menuImport.rows.length} ${plural(admin.menuImport.rows.length,'позицию','позиции','позиций')}</button>` : ''}
+      </div>
+      ${admin.menuImport.rows ? `
+        <div style="margin-top:14px" id="menuImportPreview">
+          <div class="muted" style="font-size:12.5px;margin-bottom:8px">Добавим: ${admin.menuImport.rows.filter(r => !r.duplicate).length}. Обновим по названию: ${admin.menuImport.rows.filter(r => r.duplicate).length}. ${admin.menuImport.errors.length ? `Строк с ошибками: ${admin.menuImport.errors.length} — они не попадут в меню.` : ''}</div>
+          <table class="a-table a-table-menu-import">
+            <thead><tr><th scope="col">Блюдо</th><th scope="col">Категория</th><th scope="col">Цена</th><th scope="col">Скидка</th><th scope="col">На главной</th><th scope="col">Действие</th></tr></thead>
+            <tbody>${admin.menuImport.rows.map(r => `
+              <tr><td><b>${esc(r.name)}</b><div class="muted" style="font-size:11.5px">${esc(r.unit)}</div></td><td>${esc(CATEGORIES.find(c => c.id===r.cat).name)}</td><td>${fmt(r.price)}</td><td>${r.salePercent ? '−'+r.salePercent+'%' : '—'}</td><td>${r.popular?'Да':'Нет'}${r.warning?`<div class="muted" style="font-size:11.5px">${esc(r.warning)}</div>`:''}</td><td><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'обновим':'добавим'}</span></td></tr>`).join('')}</tbody>
+          </table>
+          <div class="a-cards">${admin.menuImport.rows.map(r => `
+            <article class="a-card a-card-col"><div class="a-card-body">
+              <div class="a-card-title"><b>${esc(r.name)}</b><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'обновим':'добавим'}</span></div>
+              <div class="muted" style="font-size:12.5px">${esc(CATEGORIES.find(c => c.id===r.cat).name)} · ${fmt(r.price)}${r.salePercent?' · −'+r.salePercent+'%':''}</div>
+              <div class="muted" style="font-size:12px">${r.popular?'Покажем на главной':'Без ленты на главной'}${r.warning?' · '+esc(r.warning):''}</div>
+            </div></article>`).join('')}</div>
+          ${admin.menuImport.errors.length ? `<div class="a-form-error">Не разобрано строк: ${admin.menuImport.errors.length} — ${admin.menuImport.errors.slice(0,4).map(esc).join('; ')}${admin.menuImport.errors.length>4?'…':''}</div>` : ''}
+        </div>` : ''}
+    </div>
+  </details>
+
+  <div class="a-grid a-grid-4" style="margin-bottom:18px;margin-top:18px">
     <div class="a-stat"><div class="lbl">Позиций в меню</div><div class="val">${list.length}</div><div class="delta">${cats.length} категорий</div></div>
     <div class="a-stat"><div class="lbl">Активных</div><div class="val lime">${active}</div><div class="delta">${stopped} в стоп-листе</div></div>
     <div class="a-stat"><div class="lbl">Средняя цена</div><div class="val">${fmt(list.reduce((s,d)=>s+dishPrice(d),0)/list.length)}</div><div class="delta">с учётом скидок</div></div>
@@ -397,7 +538,7 @@ function adminMenu(){
         ${list.map(d => `
           <tr class="${dishAvailable(d)?'':'is-stopped'}">
             <td><img class="thumb" src="${d.img}" alt=""></td>
-            <td><b>${d.name}</b>${d.badge?`<div class="muted" style="font-size:11.5px;margin-top:2px">${d.badge}</div>`:''}</td>
+            <td><b>${d.name}</b>${d.badge?`<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(d.badge)}</div>`:''}</td>
             <td class="muted nw">${CATEGORIES.find(c=>c.id===d.cat).name}</td>
             <td class="muted nw">${d.unit}</td>
             <td class="nw"><b>${fmt(dishPrice(d))}</b>${d.salePercent?`<div class="muted" style="font-size:11.5px"><s>${fmt(d.price)}</s> · −${d.salePercent}%</div>`:''}</td>
@@ -422,7 +563,7 @@ function adminMenu(){
         <article class="a-card ${dishAvailable(d)?'':'is-stopped'}">
           <img class="a-card-thumb" src="${d.img}" alt="">
           <div class="a-card-body">
-            <div class="a-card-title"><b>${d.name}</b>${d.badge?`<span class="muted">${d.badge}</span>`:''}</div>
+            <div class="a-card-title"><b>${d.name}</b>${d.badge?`<span class="muted">${esc(d.badge)}</span>`:''}</div>
             <div class="muted" style="font-size:12.5px">${CATEGORIES.find(c=>c.id===d.cat).name} · ${d.unit}</div>
             <div class="a-card-row">
               <b>${fmt(dishPrice(d))}</b>${d.salePercent?`<span class="muted"><s>${fmt(d.price)}</s> · −${d.salePercent}%</span>`:''}
@@ -472,14 +613,81 @@ function adminMenu(){
 
 /* ------------------------------- маркетинг ------------------------------- */
 
+const PUSH_AUDIENCES = [
+  { id:'all', label:'Вся база' },
+  { id:'segment:Новый', label:'Новые гости' },
+  { id:'segment:Постоянный', label:'Постоянные гости' },
+  { id:'segment:VIP', label:'VIP' },
+  { id:'segment:Спящий', label:'Спящие' },
+  { id:'source:CRM', label:'Импортированные из CRM' },
+  { id:'source:Заказ', label:'С заказом в прототипе' }
+];
+function pushRecipients(audience = admin.pushDraft.audience){
+  if (audience.startsWith('segment:')) return ADMIN_CLIENTS.filter(c => c.segment === audience.slice(8));
+  if (audience.startsWith('source:')){
+    const source = audience.slice(7);
+    return ADMIN_CLIENTS.filter(c => (c.sources || [c.source || 'Демо']).includes(source));
+  }
+  return ADMIN_CLIENTS.slice();
+}
+const pushAudienceLabel = id => (PUSH_AUDIENCES.find(a => a.id === id) || PUSH_AUDIENCES[0]).label;
+
+function bonusExampleText(){
+  const months = Math.max(0, Number(RULES.bonusExpiryMonths) || 0);
+  return `Пример: при заказе блюд на 1 000 ₽ гость получит ${Math.floor(1000*RULES.bonusAccrual/100)} баллов после выполнения и сможет списать до ${Math.floor(1000*RULES.bonusMaxPay/100)} баллов.` +
+    (months ? ` Баллы сгорят через ${months} ${plural(months,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.');
+}
+
+function syncBonusExample(){
+  const example = document.getElementById('bonusExample');
+  if (example) example.textContent = bonusExampleText();
+}
+
+function updatePushPreview(){
+  const d = admin.pushDraft;
+  const recipients = pushRecipients(d.audience);
+  const set = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  set('pushCount', recipients.length + ' ' + plural(recipients.length,'получатель','получателя','получателей'));
+  set('pushPreviewTitle', d.title.trim() || 'Заголовок уведомления');
+  set('pushPreviewText', d.text.trim() || 'Текст сообщения появится здесь');
+  set('pushChars', String(d.text.length) + ' / 180');
+  set('pushRecipientNames', recipients.length
+    ? recipients.slice(0,3).map(c => c.name).join(', ') + (recipients.length>3 ? ' и ещё ' + (recipients.length-3) : '')
+    : 'В этой аудитории пока никого нет');
+  const promo = document.getElementById('pushPreviewPromo');
+  if (promo){ promo.hidden = !d.promo; promo.textContent = d.promo ? 'Промокод: ' + d.promo : ''; }
+  set('pushSendLabel', d.when === 'later' ? 'Сохранить демо-расписание' : 'Смоделировать отправку');
+}
+
 function adminMarketing(){
+  const s = admin.settings;
   const ownBanner = !!admin.bannerDraft.img && !DISH_IMAGES.includes(admin.bannerDraft.img);
   return `
   <div class="a-grid a-grid-4" style="margin-bottom:18px">
     <div class="a-stat"><div class="lbl">Активных промокодов</div><div class="val lime">${activePromos().length}</div><div class="delta">всего в базе: ${PROMOS.length}</div></div>
     <div class="a-stat"><div class="lbl">Начисление бонусов</div><div class="val">${admin.settings.bonusPercent}%</div><div class="delta">от суммы заказа</div></div>
-    <div class="a-stat"><div class="lbl">Push-рассылок за месяц</div><div class="val">3</div><div class="delta">средний CTR 6,4%</div></div>
+    <div class="a-stat"><div class="lbl">Рассылок в демо-журнале</div><div class="val">${admin.pushLog.length}</div><div class="delta">реальная отправка не подключена</div></div>
     <div class="a-stat"><div class="lbl">Баннеров на главной</div><div class="val">${activeBanners().length}</div><div class="delta">всего заведено: ${BANNERS.length}</div></div>
+  </div>
+
+  <div class="a-panel" id="bonusSettings" style="margin-bottom:16px">
+    <div class="row between" style="align-items:flex-start;gap:16px">
+      <div>
+        <h2>Бонусная система</h2>
+        <p class="a-lead-sm" style="margin-top:6px">Простой кэшбэк: 1 балл = 1 ₽. Без уровней и отдельных условий по блюдам.${s.bonusExpiryMonths ? ` Баллы сгорают через ${s.bonusExpiryMonths} ${plural(s.bonusExpiryMonths,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.'}</p>
+      </div>
+      <span class="a-pill ${s.bonusEnabled?'lime':'warn'}">${s.bonusEnabled?'Включена':'Выключена'}</span>
+    </div>
+    <button class="switch-row" role="switch" aria-checked="${!!s.bonusEnabled}" data-act="admin-toggle" data-key="bonusEnabled">
+      <span>Начислять и списывать бонусы</span><span class="opt-toggle ${s.bonusEnabled?'is-on':''}" aria-hidden="true"></span>
+    </button>
+    <div class="a-grid a-grid-3" style="gap:10px;margin-top:12px">
+      <label class="a-labeled"><span>Кэшбэк с заказа, %</span><input class="input-plain" id="bonusPercent" type="number" min="0" max="50" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusPercent" value="${s.bonusPercent}" ${s.bonusEnabled?'':'disabled'}></label>
+      <label class="a-labeled"><span>Максимум оплаты баллами, %</span><input class="input-plain" id="bonusMaxPay" type="number" min="0" max="100" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusMaxPay" value="${s.bonusMaxPay}" ${s.bonusEnabled?'':'disabled'}></label>
+      <label class="a-labeled"><span>Срок списания баллов, месяцев</span><input class="input-plain" id="bonusExpiryMonths" type="number" min="0" max="60" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusExpiryMonths" value="${s.bonusExpiryMonths}" ${s.bonusEnabled?'':'disabled'}></label>
+    </div>
+    <p class="a-form-note" id="bonusExample">${bonusExampleText()}</p>
+    <p class="a-form-note">Кэшбэк считается от суммы блюд после промокода, без доставки. Списанные баллы возвращаются при отмене. Срок списания действует для новых начислений: уже начисленные баллы сохраняют свой срок. 0 месяцев — баллы не сгорают. Настройки применяются сразу и работают только в демо-вкладке; это не счёт iiko.</p>
   </div>
 
   <div class="a-grid a-grid-split" style="margin-bottom:16px">
@@ -571,11 +779,7 @@ function adminMarketing(){
         <input class="input-plain" id="banner-sub" aria-label="Подпись под заголовком" data-act="admin-banner-draft" data-field="sub" placeholder="Подпись: промокод, условия" value="${esc(admin.bannerDraft.sub)}">
         <input class="input-plain" id="banner-cta" aria-label="Надпись на кнопке" data-act="admin-banner-draft" data-field="cta" placeholder="Кнопка: Применить код" value="${esc(admin.bannerDraft.cta)}">
       </div>
-      <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
-        <label class="a-labeled"><span>Картинка из набора</span><select class="input-plain" id="banner-img" data-act="admin-banner-draft" data-field="img">
-          ${ownBanner ? `<option value="${admin.bannerDraft.img}" selected>— свой баннер —</option>` : ''}
-          ${DISH_IMAGES.map(p => `<option value="${p}" ${admin.bannerDraft.img===p?'selected':''}>${p.replace('assets/','')}</option>`).join('')}
-        </select></label>
+      <div style="margin-top:10px">
         ${admin.bannerDraft.kind === 'promo' ? `
           <label class="a-labeled"><span>Промокод, который даёт скидку</span><select class="input-plain" id="banner-code" data-act="admin-banner-draft" data-field="code">
             <option value="">— выберите промокод —</option>
@@ -591,10 +795,17 @@ function adminMarketing(){
       <div class="a-photo a-banner-photo">
         <img class="a-banner-preview" src="${admin.bannerDraft.img}" alt="Предпросмотр баннера">
         <div class="a-photo-fields">
-          <label class="a-photo-title" for="bannerPhoto">Свой баннер — JPG или PNG</label>
+          <label class="a-photo-title" for="bannerPhoto">Баннер — загрузить свой JPG или PNG</label>
           <input type="file" id="bannerPhoto" class="a-file" accept="image/*" data-act="admin-banner-photo">
           <div class="muted" style="font-size:12px">Рекомендуем 1600 × 800 px, горизонтальный 2:1. На главной верх и низ обрежутся чуть сильнее — текст и блюдо держите по центру. Большой файл ужмётся до 1600 px по ширине.</div>
-          ${ownBanner ? '<button class="a-btn" data-act="admin-banner-photo-reset">Вернуть картинку из набора</button>' : ''}
+          ${ownBanner ? '<button class="a-btn" data-act="admin-banner-photo-reset">Вернуть прежний баннер</button>' : ''}
+          <details class="a-stock">
+            <summary>Нет своего баннера? Выбрать демо-фон</summary>
+            <div class="a-stock-grid a-stock-banners">
+              ${DISH_IMAGES.map((p, i) => `<button type="button" class="a-stock-image ${admin.bannerDraft.img===p?'is-active':''}" data-act="admin-banner-stock" data-img="${p}" aria-label="Выбрать демо-фон ${i+1}" aria-pressed="${admin.bannerDraft.img===p}"><img src="${p}" alt=""></button>`).join('')}
+            </div>
+            <p class="a-form-note">Это фотографии блюд для демонстрации, а не готовые рекламные макеты. Для запуска загрузите свой баннер с текстом и нужным кадрированием.</p>
+          </details>
         </div>
       </div>
       <div class="a-row" style="margin-top:12px">
@@ -603,12 +814,45 @@ function adminMarketing(){
       </div>
       </div>
 
-      <h2 style="margin-top:20px">Push-рассылка</h2>
-      <textarea class="input-plain" rows="3" placeholder="Текст сообщения для гостей"></textarea>
-      <div class="a-row" style="margin-top:10px">
-        <button class="a-btn" data-act="admin-toast" data-msg="Рассылка отправлена 214 гостям">Отправить всем (214)</button>
-        <button class="a-btn" data-act="admin-toast" data-msg="Сегмент «Спящие» — 38 гостей">Сегмент «Спящие»</button>
+      <div class="a-subform" id="pushForm">
+        <h2>Push-рассылка</h2>
+        <p class="a-lead-sm">Настройте аудиторию, текст, промокод и время. Получатели считаются из текущей базы гостей выше, а не заданы вручную.</p>
+        <div class="field">
+          <label for="pushAudience">Кому отправить</label>
+          <select class="input-plain" id="pushAudience" data-act="admin-push-draft" data-field="audience">
+            ${PUSH_AUDIENCES.map(a => `<option value="${a.id}" ${admin.pushDraft.audience===a.id?'selected':''}>${a.label} · ${pushRecipients(a.id).length}</option>`).join('')}
+          </select>
+          <p class="hint" id="pushCount">${pushRecipients().length} ${plural(pushRecipients().length,'получатель','получателя','получателей')}</p>
+        </div>
+        <div class="field"><label for="pushTitle">Заголовок</label><input class="input-plain" id="pushTitle" maxlength="60" data-act="admin-push-draft" data-field="title" placeholder="Например: Ужин со скидкой" value="${esc(admin.pushDraft.title)}"></div>
+        <div class="field">
+          <label for="pushText">Текст сообщения</label>
+          <textarea class="input-plain" id="pushText" rows="3" maxlength="180" data-act="admin-push-draft" data-field="text" placeholder="Сегодня −15% на роллы по промокоду VASABI">${esc(admin.pushDraft.text)}</textarea>
+          <p class="hint" id="pushChars">${admin.pushDraft.text.length} / 180</p>
+        </div>
+        <div class="a-grid a-grid-2" style="gap:10px">
+          <label class="a-labeled"><span>Что откроется по нажатию</span><select class="input-plain" id="pushPromo" data-act="admin-push-draft" data-field="promo">
+            <option value="">Главная приложения</option>
+            ${PROMOS.filter(p => p.active).map(p => `<option value="${p.code}" ${admin.pushDraft.promo===p.code?'selected':''}>Промокод ${p.code}</option>`).join('')}
+          </select></label>
+          <label class="a-labeled"><span>Когда</span><select class="input-plain" id="pushWhen" data-act="admin-push-draft" data-field="when">
+            <option value="now" ${admin.pushDraft.when==='now'?'selected':''}>Сейчас</option>
+            <option value="later" ${admin.pushDraft.when==='later'?'selected':''}>Запланировать</option>
+          </select></label>
+        </div>
+        ${admin.pushDraft.when === 'later' ? `<div class="field" style="margin-top:10px"><label for="pushScheduleAt">Дата и время</label><input class="input-plain" id="pushScheduleAt" type="datetime-local" data-act="admin-push-draft" data-field="scheduleAt" value="${esc(admin.pushDraft.scheduleAt)}"></div>` : ''}
+        <div class="a-push-preview" aria-label="Предпросмотр уведомления">
+          <div class="a-push-brand">${icon('bell')} васаби. <span>сейчас</span></div>
+          <b id="pushPreviewTitle">${esc(admin.pushDraft.title || 'Заголовок уведомления')}</b>
+          <p id="pushPreviewText">${esc(admin.pushDraft.text || 'Текст сообщения появится здесь')}</p>
+          <span class="a-pill lime" id="pushPreviewPromo" ${admin.pushDraft.promo?'':'hidden'}>${admin.pushDraft.promo?'Промокод: '+esc(admin.pushDraft.promo):''}</span>
+        </div>
+        <p class="a-form-note a-push-recipients" id="pushRecipientNames">${pushRecipients().length ? pushRecipients().slice(0,3).map(c => esc(c.name)).join(', ') + (pushRecipients().length>3 ? ' и ещё ' + (pushRecipients().length-3) : '') : 'В этой аудитории пока никого нет'}</p>
+        <button class="a-btn primary a-push-send" data-act="admin-push-send" ${pushRecipients().length?'':'disabled'}><span id="pushSendLabel">${admin.pushDraft.when==='later'?'Сохранить демо-расписание':'Смоделировать отправку'}</span></button>
+        <p class="a-form-note">В прототипе рассылка только сохраняется в демо-журнал: телефоны ничего не получат. Для настоящей отправки и расписания нужны сервер, согласия гостей и push-провайдер.</p>
       </div>
+      ${admin.pushLog.length ? `<div class="a-subform"><h2>Демо-журнал рассылок</h2>${admin.pushLog.slice(0,3).map(entry => `
+        <div class="sum-row" style="align-items:flex-start"><div><b>${esc(entry.title)}</b><div class="muted" style="font-size:12px">${esc(entry.audience)} · ${entry.count} ${plural(entry.count,'получатель','получателя','получателей')} · ${esc(entry.timing)}</div></div><span class="a-pill warn">Не отправлено</span></div>`).join('')}</div>` : ''}
     </div>
   </div>`;
 }
@@ -616,21 +860,24 @@ function adminMarketing(){
 /* -------------------------------- клиенты ------------------------------- */
 
 function adminClients(){
+  const orderCount = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.orders) || 0), 0);
+  const orderSum = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.sum) || 0), 0);
   return `
   <div class="a-grid a-grid-4" style="margin-bottom:18px">
-    <div class="a-stat"><div class="lbl">Гостей в базе</div><div class="val">${ADMIN_CLIENTS.length}</div><div class="delta">+12 за неделю</div></div>
-    <div class="a-stat"><div class="lbl">Из них с заказами</div><div class="val lime">${ADMIN_CLIENTS.filter(c=>c.orders>1).length}</div><div class="delta">повторные покупки</div></div>
-    <div class="a-stat"><div class="lbl">Средний чек</div><div class="val">${fmt(1240)}</div><div class="delta">+6% к прошлой неделе</div></div>
-    <div class="a-stat"><div class="lbl">Баллов в обороте</div><div class="val">${fmt(ADMIN_CLIENTS.reduce((s,c)=>s+c.bonus,0))}</div><div class="delta">начислено гостям</div></div>
+    <div class="a-stat"><div class="lbl">Гостей в базе</div><div class="val">${ADMIN_CLIENTS.length}</div><div class="delta">демо, CRM и заказы</div></div>
+    <div class="a-stat"><div class="lbl">Повторных гостей</div><div class="val lime">${ADMIN_CLIENTS.filter(c=>c.orders>1).length}</div><div class="delta">больше одного заказа</div></div>
+    <div class="a-stat"><div class="lbl">Средний чек</div><div class="val">${fmt(orderCount ? orderSum/orderCount : 0)}</div><div class="delta">по истории в этой базе</div></div>
+    <div class="a-stat"><div class="lbl">Баллов в обороте</div><div class="val">${fmt(ADMIN_CLIENTS.reduce((s,c)=>s+c.bonus,0))}</div><div class="delta">демо и CRM, не iiko</div></div>
   </div>
   <div class="a-panel">
     <h2>Гости</h2>
+    <p class="a-lead">После оформления заказа с телефоном гость появляется здесь автоматически или обновляет свою историю. Импорт из CRM добавляет переехавшую базу. Исходные шесть записей — демо; QR-заказ к столу без телефона карточку не создаёт.</p>
     <table class="a-table a-table-clients">
       <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Последний</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
         ${ADMIN_CLIENTS.map(c => `
           <tr>
-            <td><b>${c.name}</b>${c.source?` <span class="a-pill olive">${c.source}</span>`:''}</td>
+            <td><b>${c.name}</b> <span class="a-pill olive">${esc(clientOrigin(c))}</span></td>
             <td class="muted nw">${c.phone}</td>
             <td class="nw">${c.orders}</td>
             <td class="nw">${fmt(c.sum)}</td>
@@ -651,7 +898,7 @@ function adminClients(){
       ${ADMIN_CLIENTS.map(c => `
         <article class="a-card">
           <div class="a-card-body">
-            <div class="a-card-title"><b>${c.name}</b>${c.source?`<span class="a-pill olive">${c.source}</span>`:''}</div>
+            <div class="a-card-title"><b>${c.name}</b><span class="a-pill olive">${esc(clientOrigin(c))}</span></div>
             <div class="muted" style="font-size:12.5px">${c.phone}</div>
             <div class="a-card-row">
               <span>${c.orders} ${plural(c.orders,'заказ','заказа','заказов')} · ${fmt(c.sum)}</span>
@@ -677,7 +924,7 @@ function adminClients(){
         <button class="a-btn" data-act="admin-bonus-cancel">Отмена</button>
       </div>
     </div>
-    <p class="muted" style="font-size:12.5px;margin-top:10px">Сейчас у гостя ${fmt(admin.bonusFor.bonus)}. Бонусы iiko не подключены — начисление идёт только в базе прототипа.</p>
+    <p class="muted" style="font-size:12.5px;margin-top:10px">Сейчас у гостя ${fmt(admin.bonusFor.bonus)}. Ручное начисление попадёт в историю демо-счёта; гость с этим телефоном увидит новый баланс.</p>
   </div>` : ''}
 
   <div class="a-panel" style="margin-top:16px">
@@ -1055,14 +1302,14 @@ document.addEventListener('click', ev => {
   }
   if (act === 'admin-order-status'){
     const o = state.orders.find(x => x.id === el.dataset.id);
-    if (o && !DEAD_STATUSES.includes(o.status)){ o.status = el.dataset.to; renderAdmin(); toast('Заказ №' + o.no + ' → ' + statusLabel(o)); render(); }
+    if (o && !DEAD_STATUSES.includes(o.status)){ setOrderStatus(o, el.dataset.to); renderAdmin(); toast('Заказ №' + o.no + ' → ' + statusLabel(o)); render(); }
   }
   if (act === 'admin-reject-open'){ admin.rejectFor = el.dataset.id; renderAdmin(); }
   if (act === 'admin-reject-cancel'){ admin.rejectFor = null; renderAdmin(); }
   if (act === 'admin-reject'){
     const o = state.orders.find(x => x.id === el.dataset.id);
     if (o){
-      o.status = 'rejected';
+      setOrderStatus(o, 'rejected');
       o.rejectReason = el.dataset.reason;
       admin.rejectFor = null;
       renderAdmin();
@@ -1089,6 +1336,13 @@ document.addEventListener('click', ev => {
     renderAdmin();
     render();
     toast(d.available ? d.name + ' — снова в меню' : d.name + ' — стоп-лист, гости не видят блюдо');
+  }
+  if (act === 'admin-dish-badge'){
+    admin.dishDraft.badge = el.dataset.badge || '';
+    const input = document.getElementById('dish-badge');
+    if (input) input.value = admin.dishDraft.badge;
+    syncDishBadgePresets();
+    return;
   }
   if (act === 'admin-dish-popular'){
     admin.dishDraft.popular = !admin.dishDraft.popular;
@@ -1119,6 +1373,10 @@ document.addEventListener('click', ev => {
     if (form) form.scrollIntoView({ block:'start', behavior:'smooth' });
     const nameEl = document.getElementById('dish-name');
     if (nameEl) nameEl.focus({ preventScroll:true });
+  }
+  if (act === 'admin-dish-stock'){
+    admin.dishDraft.img = el.dataset.img;
+    renderAdmin();
   }
   if (act === 'admin-dish-photo-reset'){
     admin.dishDraft.img = admin.dishDraft.defaultImg || 'assets/philadelphia.jpg';
@@ -1188,6 +1446,10 @@ document.addEventListener('click', ev => {
   }
   if (act === 'admin-banner-cancel'){
     admin.bannerDraft = emptyBannerDraft();
+    renderAdmin();
+  }
+  if (act === 'admin-banner-stock'){
+    admin.bannerDraft.img = el.dataset.img;
     renderAdmin();
   }
   if (act === 'admin-banner-photo-reset'){
@@ -1279,6 +1541,81 @@ document.addEventListener('click', ev => {
     render();
     toast(existing ? 'Акция «' + title + '» сохранена' : 'Акция «' + title + '» — уже в карусели на главной');
   }
+  if (act === 'admin-push-send'){
+    const dr = readDraftFields('pushForm', 'admin-push-draft', admin.pushDraft);
+    const recipients = pushRecipients(dr.audience);
+    if (!dr.title.trim()){ toast('Введите заголовок рассылки'); return; }
+    if (!dr.text.trim()){ toast('Введите текст сообщения'); return; }
+    if (!recipients.length){ toast('В выбранной аудитории нет гостей'); return; }
+    let timing = 'сейчас · ' + nowRu();
+    if (dr.when === 'later'){
+      const at = new Date(dr.scheduleAt);
+      if (!dr.scheduleAt || !isFinite(at.getTime()) || at.getTime() <= Date.now()){
+        toast('Выберите дату и время в будущем'); return;
+      }
+      timing = 'на ' + at.toLocaleString('ru-RU', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
+    }
+    admin.pushLog.unshift({
+      title:dr.title.trim(), text:dr.text.trim(), audience:pushAudienceLabel(dr.audience),
+      count:recipients.length, promo:dr.promo, timing
+    });
+    admin.pushDraft = { ...dr, title:'', text:'' };
+    renderAdmin();
+    toast('Демо-рассылка сохранена для ' + recipients.length + ' ' + plural(recipients.length,'гостя','гостей','гостей') + '. Реальные push не отправлялись');
+    return;
+  }
+  if (act === 'admin-menu-template'){
+    const blob = new Blob([MENU_CSV_TEMPLATE], { type:'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'wasabi-menu-template.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Шаблон скачан: откройте в Excel, замените примеры и сохраните как CSV UTF-8');
+    return;
+  }
+  if (act === 'admin-menu-import-check'){
+    const parsed = parseMenuCsv(admin.menuImport.text);
+    admin.menuImport.rows = parsed.rows;
+    admin.menuImport.errors = parsed.errors;
+    renderAdmin();
+    if (!parsed.rows.length && !parsed.errors.length) toast('В данных нет блюд');
+    else if (!parsed.rows.length) toast('Ни одна строка не разобрана — проверьте шаблон');
+    else toast('Готово к импорту: ' + parsed.rows.length + ', ошибок: ' + parsed.errors.length);
+    return;
+  }
+  if (act === 'admin-menu-import-apply'){
+    const rows = admin.menuImport.rows || [];
+    if (!rows.length){ toast('Сначала проверьте меню'); return; }
+    let added = 0, updated = 0;
+    rows.forEach(r => {
+      const existing = DISHES.find(d => normDishName(d.name) === normDishName(r.name));
+      if (existing){
+        Object.assign(existing, {
+          name:r.name, cat:r.cat, price:r.price, salePercent:r.salePercent,
+          unit:r.unit, badge:r.badge, desc:r.desc, composition:r.composition,
+          allergens:r.allergens, popular:r.popular
+        });
+        updated++;
+        return;
+      }
+      DISHES.push({
+        id:'d-import-' + Date.now().toString(36) + '-' + added,
+        name:r.name, cat:r.cat, price:r.price, salePercent:r.salePercent,
+        unit:r.unit, badge:r.badge, popular:r.popular,
+        desc:r.desc || 'Новая позиция в меню «васаби.».',
+        note:'Готовим специально для вас. Только после заказа — свой соус, свежий имбирь и настоящий васаби.',
+        composition:r.composition, allergens:r.allergens, pairs:[], available:true, modifiers:[],
+        img:MENU_DEMO_IMAGES[r.cat] || 'assets/philadelphia.jpg'
+      });
+      added++;
+    });
+    const errors = (admin.menuImport.errors || []).length;
+    admin.menuImport = { text:admin.menuImport.text, rows:null, errors:null };
+    renderAdmin();
+    render();
+    toast('Меню обновлено: добавлено ' + added + ', изменено ' + updated + (errors ? ', пропущено с ошибками ' + errors : ''));
+    return;
+  }
   if (act === 'admin-bonus-open'){
     const c = ADMIN_CLIENTS.find(x => x.phone === el.dataset.phone);
     if (!c) return;
@@ -1297,9 +1634,10 @@ document.addEventListener('click', ev => {
     if (!c) return;
     const n = Math.round(Number(admin.bonusAmount) || 0);
     if (n <= 0){ toast('Введите количество баллов'); return; }
-    c.bonus += n;
+    addBonusEntry(c, n, 'Начисление рестораном');
     admin.bonusFor = null;
     renderAdmin();
+    render();
     toast(c.name + ' — начислено ' + n + ' баллов');
   }
   if (act === 'admin-client-del'){
@@ -1333,12 +1671,13 @@ document.addEventListener('click', ev => {
         exist.orders = Math.max(exist.orders, r.orders);
         exist.sum = Math.max(exist.sum, r.sum);
         exist.bonus = Math.max(exist.bonus, r.bonus);
+        addClientSource(exist, 'CRM');
         updated++;
         return;
       }
       ADMIN_CLIENTS.push({
         name:r.name, phone:r.phone, orders:r.orders, sum:r.sum, bonus:r.bonus,
-        segment:r.segment, last:'импорт из CRM', source:'CRM'
+        segment:r.segment, last:'импорт из CRM', sources:['CRM']
       });
       added++;
     });
@@ -1348,14 +1687,16 @@ document.addEventListener('click', ev => {
   }
   if (act === 'admin-new-order'){
     const d = dishById('d-sing');
-    state.orders.unshift({
+    const order = {
       id:'o'+Date.now(), no: Math.random().toString(36).slice(2,8), date: nowRu(),
       items:[{ dishId:d.id, name:d.name, qty:1, price:dishPrice(d), mods:[] }],
       sub:dishPrice(d), delivery:RULES.deliveryPrice, discount:0, bonus:0, total:dishPrice(d) + RULES.deliveryPrice,
       status:'new', address:'Ташкентская 198', comment:'Домофон 42', payment:'card', promo:null,
       deliveryType:'delivery', locationId:'l1', addressId:'a1', slot:null,
       customer:'Гость с терминала', phone:'+7 926 640-08-31'
-    });
+    };
+    state.orders.unshift(order);
+    recordClientOrder(order);
     admin.tab = 'new';
     renderAdmin();
     toast('Тестовый заказ создан — он появился в приложении гостя');
@@ -1364,7 +1705,12 @@ document.addEventListener('click', ev => {
   if (act === 'admin-toggle'){
     const k = el.dataset.key;
     admin.settings[k] = !admin.settings[k];
+    if (k === 'bonusEnabled'){
+      RULES.bonusEnabled = admin.settings[k];
+      state.bonusUse = 0;
+    }
     renderAdmin();
+    render();
   }
   if (act === 'admin-save'){
     renderAdmin();
@@ -1422,7 +1768,10 @@ document.addEventListener('input', ev => {
   const el = ev.target;
   if (!el.dataset) return;
   if (el.dataset.act === 'admin-draft'){ admin.promoDraft[el.dataset.field] = el.value; }
-  if (el.dataset.act === 'admin-dish-draft'){ admin.dishDraft[el.dataset.field] = el.value; }
+  if (el.dataset.act === 'admin-dish-draft'){
+    admin.dishDraft[el.dataset.field] = el.value;
+    if (el.id === 'dish-badge') syncDishBadgePresets();
+  }
   if (el.dataset.act === 'admin-banner-draft'){ admin.bannerDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-location-draft'){ admin.locationDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-staff-draft'){ admin.staffDraft[el.dataset.field] = el.value; }
@@ -1437,6 +1786,19 @@ document.addEventListener('input', ev => {
     if (apply) apply.remove();
     if (prev) prev.remove();
   }
+  if (el.dataset.act === 'admin-menu-import-text'){
+    admin.menuImport.text = el.value;
+    admin.menuImport.rows = null;
+    admin.menuImport.errors = null;
+    const apply = document.getElementById('menuImportApply');
+    const prev = document.getElementById('menuImportPreview');
+    if (apply) apply.remove();
+    if (prev) prev.remove();
+  }
+  if (el.dataset.act === 'admin-push-draft'){
+    admin.pushDraft[el.dataset.field] = el.value;
+    updatePushPreview();
+  }
   if (el.dataset.act === 'admin-setting'){
     admin.settings[el.dataset.key] = el.value;
     const n = parseFloat(el.value);
@@ -1444,7 +1806,10 @@ document.addEventListener('input', ev => {
       if (el.dataset.key === 'deliveryPrice') RULES.deliveryPrice = n;
       if (el.dataset.key === 'freeFrom') RULES.freeDeliveryFrom = n;
       if (el.dataset.key === 'minOrder') RULES.minOrder = n;
-      if (el.dataset.key === 'bonusPercent') RULES.bonusAccrual = n;
+      if (el.dataset.key === 'bonusPercent') RULES.bonusAccrual = Math.min(50, Math.max(0, n));
+      if (el.dataset.key === 'bonusMaxPay') RULES.bonusMaxPay = Math.min(100, Math.max(0, n));
+      if (el.dataset.key === 'bonusExpiryMonths') RULES.bonusExpiryMonths = Math.min(60, Math.max(0, Math.round(n)));
+      if (el.dataset.key === 'bonusPercent' || el.dataset.key === 'bonusMaxPay' || el.dataset.key === 'bonusExpiryMonths') syncBonusExample();
     }
     if (el.dataset.key === 'prepTime') RULES.prepTime = el.value;
   }
@@ -1453,6 +1818,17 @@ document.addEventListener('input', ev => {
 document.addEventListener('change', ev => {
   const el = ev.target;
   if (!el.dataset) return;
+  if (el.dataset.act === 'admin-setting' && ['bonusPercent','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)){
+    const key = el.dataset.key;
+    const max = key === 'bonusPercent' ? 50 : (key === 'bonusMaxPay' ? 100 : 60);
+    const value = Math.min(max, Math.max(0, Math.round(Number(el.value) || 0)));
+    admin.settings[key] = value;
+    RULES[key === 'bonusPercent' ? 'bonusAccrual' : (key === 'bonusMaxPay' ? 'bonusMaxPay' : 'bonusExpiryMonths')] = value;
+    state.bonusUse = 0;
+    renderAdmin();
+    render();
+    return;
+  }
   if (el.dataset.act === 'admin-qr-field'){
     admin.qr[el.dataset.key] = el.value;
     renderAdmin();
@@ -1460,6 +1836,12 @@ document.addEventListener('change', ev => {
   }
   if (el.dataset.act === 'admin-draft' && el.dataset.field === 'type'){
     renderAdmin();
+    return;
+  }
+  if (el.dataset.act === 'admin-push-draft'){
+    admin.pushDraft[el.dataset.field] = el.value;
+    if (['audience','promo','when'].includes(el.dataset.field)) renderAdmin();
+    else updatePushPreview();
     return;
   }
   if (el.dataset.act === 'admin-staff-role'){
@@ -1483,6 +1865,20 @@ document.addEventListener('change', ev => {
       if (p) admin.bannerDraft.tag = p.type === 'percent' ? '−' + p.value + '%' : (p.type === 'fixed' ? '−' + fmt(p.value) : 'Доставка 0 ₽');
       renderAdmin();
     }
+    return;
+  }
+  if (el.dataset.act === 'admin-menu-import-file'){
+    const file = el.files && el.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      admin.menuImport.text = String(reader.result || '');
+      admin.menuImport.rows = null;
+      admin.menuImport.errors = null;
+      renderAdmin();
+      toast('Файл прочитан: ' + file.name + ' — нажмите «Проверить меню»');
+    };
+    reader.readAsText(file, 'utf-8');
     return;
   }
   if (el.dataset.act === 'admin-import-file'){
