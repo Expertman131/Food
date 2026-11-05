@@ -280,6 +280,7 @@ body[data-mode="admin"] .tb-size{display:none;}
 .btn-outline{
   border:1px solid var(--line);background:transparent;color:var(--soft);
   border-radius:999px;padding:9px 16px;min-height:44px;font-size:13px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;text-decoration:none;
 }
 .btn-outline:hover{color:var(--text);border-color:rgba(198,241,110,.4);}
 .btn-sm{width:100%;margin-top:12px;}
@@ -648,6 +649,7 @@ body[data-mode="admin"] .tb-size{display:none;}
   border-radius:20px;padding:18px;
 }
 .insp-title{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
+.insp-doc{font-size:13px;line-height:1.5;color:var(--muted);}
 .insp-list{display:flex;flex-direction:column;gap:5px;}
 .insp-item{
   display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -706,6 +708,12 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .admin-top h1{font-size:19px;font-weight:700;}
 .admin-top .sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
+.a-guide{
+  display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:999px;
+  border:1px solid var(--line);color:var(--lime);font-size:13px;font-weight:600;
+  text-decoration:none;white-space:nowrap;
+}
+.a-guide:hover{background:rgba(198,241,110,.10);border-color:rgba(198,241,110,.4);}
 /* без overflow-x:auto: иначе .admin-body становится скролл-контейнером
    и липкая кнопка сохранения не может прижаться к низу окна.
    Широкие таблицы прокручиваются внутри своих .a-panel. */

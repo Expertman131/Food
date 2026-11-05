@@ -244,6 +244,7 @@ const adminTop = (title, sub) => {
     <div class="sub">${sub}</div>
   </div>
   <div class="row gap-10">
+    <a class="a-guide" href="guide.html" target="_blank" rel="noopener">Инструкция</a>
     <span class="a-pill lime">${icon('volume')} Звук нового заказа</span>
     <span class="a-pill olive">${esc(roleLabel(staff.role))} · ${esc(staff.name)} · демо</span>
   </div>`;
