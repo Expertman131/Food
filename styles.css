@@ -337,6 +337,8 @@ body[data-mode="admin"] .tb-size{display:none;}
 .pcard-meta{font-size:12px;color:var(--muted);}
 .pcard-desc{font-size:12.5px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 .pcard-foot{display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:6px;}
+.price-stack{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0;}
+.price-old{font-size:11.5px;font-weight:500;color:var(--muted);line-height:1.2;}
 .pcard-price{font-size:18px;font-weight:700;color:var(--lime);}
 .plus-btn{
   width:44px;height:44px;flex:none;border-radius:50%;border:0;cursor:pointer;
@@ -393,6 +395,8 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .pdp-bar-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px;}
 .pdp-price{font-size:28px;font-weight:700;color:var(--lime);letter-spacing:-.02em;line-height:1;}
+.pdp-price-line{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;}
+.pdp-price-line .price-old{font-size:14px;}
 .pdp-price-cap{font-size:12px;color:var(--muted);margin-bottom:4px;}
 
 /* ---------- степпер ---------- */
@@ -753,6 +757,21 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .a-photo-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}
 .a-photo-title{font-size:12.5px;font-weight:600;color:var(--soft);}
+.a-labeled{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:12px;color:var(--soft);}
+.a-labeled .input-plain{width:100%;}
+.a-form-note{margin:10px 0 0;font-size:12px;line-height:1.5;color:var(--muted);}
+.a-banner-row{display:flex;gap:12px;align-items:flex-start;}
+.a-banner-thumb{width:112px;aspect-ratio:2/1;object-fit:cover;border-radius:10px;flex:none;background:var(--surface-2);}
+.a-banner-info{flex:1;min-width:0;}
+.a-banner-info .a-pill{margin-right:4px;}
+.a-banner-photo{flex-direction:column;}
+.a-banner-preview{display:block;width:100%;aspect-ratio:2/1;object-fit:cover;border-radius:14px;background:var(--surface-2);border:1px solid var(--line-soft);}
+.a-subform{border-top:1px solid var(--line-soft);margin-top:14px;padding-top:14px;}
+.a-subform h3{font-size:13.5px;margin:0 0 12px;}
+.a-subform .a-row{margin-top:10px;}
+.a-staff-row{align-items:flex-start;gap:12px;}
+.a-role-select{flex:0 1 190px;min-width:150px;}
+.a-role-select .input-plain{width:100%;font-size:12.5px;}
 .a-pill{
   display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 11px;
   font-size:12px;font-weight:600;background:var(--surface-2);color:var(--soft);
@@ -1101,6 +1120,10 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
   .a-cards{display:grid;grid-template-columns:minmax(0,1fr);}
   .a-photo{flex-direction:column;}
   .a-photo-preview{width:100%;height:150px;}
+  .a-banner-row{flex-direction:column;}
+  .a-banner-thumb{width:100%;}
+  .a-banner-info{width:100%;}
+  .a-role-select{flex:1 1 100%;min-width:0;width:100%;}
   /* вкладки в одну строку прятали бы последнюю: переносим, чтобы все статусы были на виду */
   .a-tabs{flex-wrap:wrap;overflow:visible;scrollbar-width:auto;}
   .a-stat{padding:14px 15px;}

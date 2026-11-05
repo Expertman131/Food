@@ -69,7 +69,7 @@ const DISHES = [
     ]
   },
   {
-    id: 'd-temp', name: 'Темпура с лососем', price: 690, cat: 'hot', popular: 1,
+    id: 'd-temp', name: 'Темпура с лососем', price: 690, salePercent: 10, cat: 'hot', popular: 1,
     unit: '6 шт. · 240 г', img: 'assets/tempura.jpg', badge: 'Горячий',
     desc: 'Хрустящая креветка в панко, лосось и соус спайси. Подаём сразу горячим, пока хрустит.',
     note: 'Готовим специально для вас. Только после заказа — свой соус, свежий имбирь и настоящий васаби.',
@@ -190,9 +190,9 @@ const BANNERS = [
   },
   {
     id: 'b-tempura', kind: 'dish', dish: 'd-temp', active: true,
-    tag: 'Горячее', img: 'assets/tempura.jpg',
-    title: 'Темпура с лососем — со скидкой к обеду.',
-    sub: '6 шт. · 690 ₽ · готовим после заказа', cta: 'Открыть блюдо'
+    tag: '−10%', img: 'assets/tempura.jpg',
+    title: 'Темпура с лососем — горячий хит.',
+    sub: '6 шт. · готовим после заказа', cta: 'Открыть блюдо'
   },
   {
     id: 'b-bonus', kind: 'screen', screen: 'profile', active: true,
@@ -248,7 +248,23 @@ const statusLabel = o => (o.deliveryType === 'table' && o.status === 'done' ? '�
 const DEAD_STATUSES = ['cancelled', 'rejected'];
 
 const LOCATIONS = [
-  { id: 'l1', name: 'Васаби на Ташкентской', address: 'Москва, ул. Ташкентская, 19', hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00' },
-  { id: 'l2', name: 'Васаби на Мичурина',    address: 'Москва, ул. Мичурина, 32',    hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00' },
-  { id: 'l3', name: 'Васаби на Патриарших',  address: 'Москва, Патриаршие пруды, 7', hours: '12:00 — 23:00', delivery: 'Самовывоз от 20 мин', open: '12:00', close: '23:00' }
+  { id: 'l1', name: 'Васаби на Ташкентской', address: 'Москва, ул. Ташкентская, 19', hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00', service:'delivery' },
+  { id: 'l2', name: 'Васаби на Мичурина',    address: 'Москва, ул. Мичурина, 32',    hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00', service:'delivery' },
+  { id: 'l3', name: 'Васаби на Патриарших',  address: 'Москва, Патриаршие пруды, 7', hours: '12:00 — 23:00', delivery: 'Самовывоз от 20 мин', open: '12:00', close: '23:00', service:'pickup' }
 ];
+
+const STAFF_ROLES = {
+  admin:    { label:'Администратор',  description:'меню, заказы, отчёты, точки и сотрудники' },
+  operator: { label:'Оператор заказов', description:'приём заказов, статусы и печать чека' },
+  courier:  { label:'Курьер',          description:'выдача заказа и статус доставки' }
+};
+
+const ADMIN_STAFF = [
+  { id:'s1', name:'Мария',   phone:'+7 900 000-00-11', role:'operator' },
+  { id:'s2', name:'Алексей', phone:'+7 900 000-00-12', role:'admin' },
+  { id:'s3', name:'Иван',    phone:'+7 900 000-00-13', role:'courier' }
+];
+
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
+  '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+}[ch]));

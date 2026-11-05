@@ -91,6 +91,7 @@ const state = {
   timeMode: 'asap',         // 'asap' | 'slot'
   slot: null,               // {day:'today'|'tomorrow', time:'13:30'}
   currentOrderId: null,
+  staffId: 's1',
   autoStatus: true,
   paying: false,
   authStep: 'phone',
@@ -128,10 +129,11 @@ const defaultDish = () => DISHES.find(d => d.available !== false && d.popular) |
 const lineKey = (dishId, mods) => dishId + '|' + mods.slice().sort().join(',');
 const cartLines = () => Object.values(state.cart);
 const cartCount = () => cartLines().reduce((s,l) => s + l.qty, 0);
+const dishPrice = d => Math.round(d.price * (100 - Math.min(90, Math.max(0, Number(d.salePercent) || 0))) / 100);
 const lineUnit = line => {
   const d = dishById(line.dishId);
   const mods = (d.modifiers || []).filter(m => line.mods.includes(m.id));
-  return d.price + mods.reduce((s,m) => s + m.price, 0);
+  return dishPrice(d) + mods.reduce((s,m) => s + m.price, 0);
 };
 const cartSubtotal = () => cartLines().reduce((s,l) => s + l.qty * lineUnit(l), 0);
 
@@ -330,7 +332,7 @@ function dishCard(d, showBadge = true){
   const out = !dishAvailable(d);
   const fav = isFav(d.id);
   return `
-  <article class="pcard ${out?'is-out':''}" data-act="open-dish" data-dish="${d.id}" tabindex="0" role="button" aria-label="${d.name}, ${fmt(d.price)}">
+  <article class="pcard ${out?'is-out':''}" data-act="open-dish" data-dish="${d.id}" tabindex="0" role="button" aria-label="${d.name}, ${fmt(dishPrice(d))}">
     <div class="pcard-img">
       <img src="${d.img}" alt="${d.name}" loading="lazy">
       ${(showBadge && d.badge && !out) ? `<span class="pcard-badge">${d.badge}</span>` : ''}
@@ -343,7 +345,7 @@ function dishCard(d, showBadge = true){
       <div class="pcard-meta">${d.unit}</div>
       <div class="pcard-desc">${d.desc}</div>
       <div class="pcard-foot">
-        <span class="pcard-price">${out ? 'Закончилось' : fmt(d.price)}</span>
+        <span class="price-stack"><span class="pcard-price">${out ? 'Закончилось' : fmt(dishPrice(d))}</span>${!out && d.salePercent ? `<s class="price-old">${fmt(d.price)}</s>` : ''}</span>
         ${out ? '' : `<button class="plus-btn" data-act="quick-add" data-dish="${d.id}" aria-label="Добавить ${d.name} в корзину">${icon('plus')}</button>`}
       </div>
     </div>
@@ -419,7 +421,7 @@ function scrHome(){
         <h1 class="hero-title">Хороший вечер начинается с роллов.</h1>
         <p class="hero-sub">Соберём ваш любимый сет. Осталось выбрать компанию.</p>
         <button class="hero-cta" data-act="open-dish" data-dish="${set.id}">
-          <span>Васаби сет · ${fmt(set.price)}</span>${icon('arrowRight')}
+          <span>Васаби сет · ${fmt(dishPrice(set))}</span>${icon('arrowRight')}
         </button>
       </div>
       <div class="hero-note">${set.unit.replace(' · ',' / ')}</div>
@@ -519,7 +521,7 @@ function scrProduct(){
   const inCart = state.cart[key];
   const out = !dishAvailable(d);
   const fav = isFav(d.id);
-  const unit = d.price + (d.modifiers || []).filter(m => state.productMods.includes(m.id)).reduce((s,m)=>s+m.price,0);
+  const unit = dishPrice(d) + (d.modifiers || []).filter(m => state.productMods.includes(m.id)).reduce((s,m)=>s+m.price,0);
   const mods = (d.modifiers || []).map(m => `
     <div class="opt-row">
       <div>
@@ -569,8 +571,8 @@ function scrProduct(){
   <div class="pdp-bar">
     <div class="pdp-bar-row">
       <div>
-        <div class="pdp-price-cap">За порцию</div>
-        <div class="pdp-price">${fmt(unit)}</div>
+        <div class="pdp-price-cap">За порцию${d.salePercent ? ' · скидка ' + d.salePercent + '%' : ''}</div>
+        <div class="pdp-price-line"><div class="pdp-price">${fmt(unit)}</div>${d.salePercent ? `<s class="price-old">${fmt(d.price + (unit - dishPrice(d)))}</s>` : ''}</div>
       </div>
       ${inCart ? stepper(key, inCart.qty) : `<div class="pdp-price-cap">${d.unit}</div>`}
     </div>
@@ -585,7 +587,7 @@ function scrProduct(){
 function scrFavorites(){
   const list = favDishes();
   const avail = list.filter(dishAvailable);
-  const total = avail.reduce((s,d) => s + d.price, 0);
+  const total = avail.reduce((s,d) => s + dishPrice(d), 0);
   return `
   ${appHeader()}
   <section class="section" style="padding-top:4px">
@@ -668,7 +670,7 @@ function scrCart(){
             <div class="upsell-name">${d.name}</div>
             <div class="upsell-meta">${d.unit}</div>
             <div class="upsell-foot">
-              <span class="upsell-price">${fmt(d.price)}</span>
+              <span class="price-stack"><span class="upsell-price">${fmt(dishPrice(d))}</span>${d.salePercent?`<s class="price-old">${fmt(d.price)}</s>`:''}</span>
               <button class="plus-btn sm" data-act="upsell-add" data-dish="${d.id}" aria-label="Добавить ${d.name} в корзину">${icon('plus')}</button>
             </div>
           </div>
@@ -1189,8 +1191,15 @@ function scrProfile(){
   <section class="section">
     <h2 class="h2" style="margin-bottom:12px">Доступ сотрудника</h2>
     <div class="card">
-      <p class="small soft">Войти в панель ресторана, чтобы принимать заказы, управлять меню и бонусами.</p>
-      <button class="btn-outline" style="margin-top:14px" data-act="mode" data-mode="admin">Открыть админ-панель</button>
+      <p class="small soft">Сотрудник открывает «Профиль» → «Доступ сотрудника». В прототипе можно выбрать демо-пользователя и посмотреть панель от его имени.</p>
+      <div class="field" style="margin-top:14px">
+        <label for="staffUser">Демо-сотрудник</label>
+        <select id="staffUser" data-act="f" data-field="staffId">
+          ${ADMIN_STAFF.map(s => `<option value="${s.id}" ${state.staffId===s.id?'selected':''}>${esc(s.name)} · ${esc(roleLabel(s.role))}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn-outline" style="margin-top:14px" data-act="mode" data-mode="admin">Открыть демо-панель</button>
+      <p class="hint" style="margin-top:10px">Без SMS и пароля. Список и роли задаются в админке → «Настройки». Настоящие приглашения и ограничение прав появятся только с серверной авторизацией.</p>
     </div>
   </section>
   <section class="section">
@@ -1242,7 +1251,7 @@ function scrRestaurant(){
   ${appBar('О ресторане')}
   <section class="section">
     <div class="eyebrow">ВАСАБИ / МЕСТА</div>
-    <h1 class="h1" style="margin-top:10px">Три адреса в городе</h1>
+    <h1 class="h1" style="margin-top:10px">${LOCATIONS.length} ${plural(LOCATIONS.length,'адрес','адреса','адресов')} в городе</h1>
     <p class="soft" style="margin-top:10px;font-size:14.5px">${BRAND.tagline}. Готовим после заказа и доставляем горячим.</p>
   </section>
   ${LOCATIONS.map(l => `
@@ -1486,14 +1495,14 @@ const FEATURE_GROUPS = [
     'Вход по SMS: экран с кодом есть, но гость попадает на него только из списка экранов'
   ]},
   { title:'Админ-панель', items:[
-    'Меню: создание и правка блюда, своё фото с телефона, стоп-лист',
+    'Меню: создание и правка блюда, метки и скидки, своё фото, стоп-лист',
     '«На главной»: какие блюда попадают в ленту любимого (до 6)',
-    'Маркетинг: промокоды, карусель акций, порядок и включение, push-рассылка',
+    'Маркетинг: промокоды с минимальной суммой, правка акций и свои баннеры 1600 × 800',
     'Заказы: приём, статусы, отклонение с причиной',
     'Клиенты: начисление бонусов, удаление, импорт базы из старой CRM',
     'QR-меню: ссылки на столы, PNG для печати, листы A4',
     'Аналитика: выручка, средний чек, доставка против самовывоза, выгрузка CSV и Excel',
-    'Настройки: доставка, минимальный заказ, время приготовления, точки, роли',
+    'Настройки: доставка, добавление и правка точек, сотрудники и роли (демо)',
     'Мобильный вид: широкие таблицы превращаются в карточки, кнопки — под палец'
   ]}
 ];
@@ -1837,6 +1846,7 @@ function onInput(el){
   if (f === 'comment') state.comment = el.value;
   if (f === 'promoInput') state.promoInput = el.value;
   if (f === 'newAddress') state.newAddress = el.value;
+  if (f === 'staffId') state.staffId = el.value;
 }
 
 /* ------------------------------ обработчики ------------------------------ */

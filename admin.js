@@ -17,15 +17,17 @@ const admin = {
   tab: 'new',
   menuFilter: 'all',
   rejectFor: null,
-  promoDraft: { code:'', type:'percent', value:10 },
+  promoDraft: { code:'', type:'percent', value:10, min:0 },
   dishDraft: {
-    id:null, name:'', cat:'rolls', price:'', unit:'', badge:'',
+    id:null, name:'', cat:'rolls', price:'', salePercent:0, unit:'', badge:'',
     desc:'', composition:'', allergens:'', img:'assets/philadelphia.jpg', popular:false
   },
   bannerDraft: {
-    kind:'promo', tag:'', title:'', sub:'', cta:'Применить код',
-    img:'assets/sashimi.jpg', code:'', dish:'d-set-w', screen:'profile'
+    id:null, kind:'promo', tag:'', title:'', sub:'', cta:'Применить код',
+    img:'assets/sashimi.jpg', defaultImg:'assets/sashimi.jpg', code:'', dish:'d-set-w', screen:'profile'
   },
+  locationDraft: { id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' },
+  staffDraft: { name:'', phone:'', role:'operator' },
   clientImport: { text:'', rows:null, errors:null, skipped:0 },
   bonusFor: null,
   bonusAmount: 100,
@@ -51,15 +53,18 @@ const ADMIN_CLIENTS = [
 ];
 
 const emptyDishDraft = () => ({
-  id:null, name:'', cat:'rolls', price:'', unit:'', badge:'',
+  id:null, name:'', cat:'rolls', price:'', salePercent:0, unit:'', badge:'',
   desc:'', composition:'', allergens:'', img:'assets/philadelphia.jpg',
   defaultImg:'assets/philadelphia.jpg', popular:false
 });
 
 const emptyBannerDraft = () => ({
-  kind:'promo', tag:'', title:'', sub:'', cta:'Применить код',
-  img:'assets/sashimi.jpg', code:'', dish:'d-set-w', screen:'profile'
+  id:null, kind:'promo', tag:'', title:'', sub:'', cta:'Применить код',
+  img:'assets/sashimi.jpg', defaultImg:'assets/sashimi.jpg', code:'', dish:'d-set-w', screen:'profile'
 });
+
+const emptyLocationDraft = () => ({ id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' });
+const roleLabel = id => (STAFF_ROLES[id] || STAFF_ROLES.operator).label;
 
 /* Телефоны сравниваются по цифрам: «+7 916 330-12-04» и «89163301204» — один гость */
 function normPhone(raw){
@@ -100,7 +105,7 @@ function parseClientsCsv(text){
 
 /* Фото из телефона: ужимаем до 900 px по ширине и переводим в jpeg,
    иначе страница с картинкой весит десятки мегабайт и подвисает. */
-function readImageFile(file){
+function readImageFile(file, maxW = 900){
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('read'));
@@ -108,7 +113,6 @@ function readImageFile(file){
       const img = new Image();
       img.onerror = () => reject(new Error('decode'));
       img.onload = () => {
-        const maxW = 900;
         const scale = Math.min(1, maxW / (img.width || maxW));
         const canvas = document.createElement('canvas');
         canvas.width = Math.max(1, Math.round(img.width * scale));
@@ -135,15 +139,18 @@ function readDraftFields(rootId, act, base){
   return out;
 }
 
-const adminTop = (title, sub) => `
+const adminTop = (title, sub) => {
+  const staff = ADMIN_STAFF.find(s => s.id === state.staffId) || ADMIN_STAFF[0];
+  return `
   <div>
     <h1>${title}</h1>
     <div class="sub">${sub}</div>
   </div>
   <div class="row gap-10">
     <span class="a-pill lime">${icon('volume')} Звук нового заказа</span>
-    <span class="a-pill olive">Оператор · Мария</span>
+    <span class="a-pill olive">${esc(roleLabel(staff.role))} · ${esc(staff.name)} · демо</span>
   </div>`;
+};
 
 /* Что делает тап по карточке акции — так оператор видит, куда ведёт баннер */
 const bannerKind = b => b.kind === 'dish'
@@ -330,20 +337,23 @@ function adminMenu(){
   return `
   <div class="a-panel" id="dishForm" style="margin-bottom:18px">
     <h2>${admin.dishDraft.id ? 'Редактирование блюда' : 'Добавить блюдо в меню'}</h2>
-    <p class="a-lead">Позиция появляется в меню гостя сразу: и в каталоге, и в поиске, и в QR-меню в зале.</p>
+    <p class="a-lead">Здесь управляются карточка и цена гостя. «Хит» или «Выбор шефа» — обычная метка; скидка в процентах уменьшает цену и показывает старую зачёркнутой.</p>
     <div class="a-grid a-grid-3" style="gap:10px">
-      <input class="input-plain" id="dish-name" aria-label="Название блюда" data-act="admin-dish-draft" data-field="name" placeholder="Название, напр. Темпура с креветкой" value="${admin.dishDraft.name}">
+      <input class="input-plain" id="dish-name" aria-label="Название блюда" data-act="admin-dish-draft" data-field="name" placeholder="Название, напр. Темпура с креветкой" value="${esc(admin.dishDraft.name)}">
       <select class="input-plain" id="dish-cat" aria-label="Категория блюда" data-act="admin-dish-draft" data-field="cat">
         ${CATEGORIES.filter(c => c.id !== 'all').map(c => `<option value="${c.id}" ${admin.dishDraft.cat===c.id?'selected':''}>${c.name}</option>`).join('')}
       </select>
-      <input class="input-plain" id="dish-price" type="number" min="1" inputmode="numeric" aria-label="Цена блюда, ₽" data-act="admin-dish-draft" data-field="price" placeholder="Цена, ₽" value="${admin.dishDraft.price}">
-      <input class="input-plain" id="dish-unit" aria-label="Вес или количество" data-act="admin-dish-draft" data-field="unit" placeholder="Вес: 8 шт. · 260 г" value="${admin.dishDraft.unit}">
-      <input class="input-plain" id="dish-badge" aria-label="Пометка над названием" data-act="admin-dish-draft" data-field="badge" placeholder="Пометка, напр. Хит" value="${admin.dishDraft.badge}">
+      <label class="a-labeled"><span>Обычная цена, ₽</span><input class="input-plain" id="dish-price" type="number" min="1" inputmode="numeric" data-act="admin-dish-draft" data-field="price" placeholder="690" value="${admin.dishDraft.price}"></label>
+      <input class="input-plain" id="dish-unit" aria-label="Вес или количество" data-act="admin-dish-draft" data-field="unit" placeholder="Вес: 8 шт. · 260 г" value="${esc(admin.dishDraft.unit)}">
+      <label class="a-labeled"><span>Метка на карточке</span><input class="input-plain" id="dish-badge" list="dishBadgePresets" data-act="admin-dish-draft" data-field="badge" placeholder="Без метки" value="${esc(admin.dishDraft.badge)}"></label>
+      <datalist id="dishBadgePresets"><option value="Хит"></option><option value="Выбор шефа"></option><option value="Новинка"></option><option value="Горячий"></option><option value="Острое"></option><option value="Веган"></option></datalist>
+      <label class="a-labeled"><span>Скидка на блюдо, %</span><input class="input-plain" id="dish-discount" type="number" min="0" max="90" inputmode="numeric" data-act="admin-dish-draft" data-field="salePercent" value="${admin.dishDraft.salePercent || 0}"></label>
       <select class="input-plain" id="dish-img" aria-label="Фото блюда" data-act="admin-dish-draft" data-field="img">
         ${ownPhoto ? `<option value="${admin.dishDraft.img}" selected>— своё фото —</option>` : ''}
         ${DISH_IMAGES.map(p => `<option value="${p}" ${admin.dishDraft.img===p?'selected':''}>${p.replace('assets/','')}</option>`).join('')}
       </select>
     </div>
+    <p class="a-form-note">Метка не меняет цену. Скидка действует на базовую цену блюда, доплаты за модификаторы не уменьшаются; 0 — без скидки. Промокод из раздела «Маркетинг» применяется дополнительно ко всей корзине.</p>
     <div class="a-photo">
       <img class="a-photo-preview" src="${admin.dishDraft.img}" alt="Фото блюда">
       <div class="a-photo-fields">
@@ -372,7 +382,7 @@ function adminMenu(){
   <div class="a-grid a-grid-4" style="margin-bottom:18px">
     <div class="a-stat"><div class="lbl">Позиций в меню</div><div class="val">${list.length}</div><div class="delta">${cats.length} категорий</div></div>
     <div class="a-stat"><div class="lbl">Активных</div><div class="val lime">${active}</div><div class="delta">${stopped} в стоп-листе</div></div>
-    <div class="a-stat"><div class="lbl">Средняя цена</div><div class="val">${fmt(list.reduce((s,d)=>s+d.price,0)/list.length)}</div><div class="delta">по всем категориям</div></div>
+    <div class="a-stat"><div class="lbl">Средняя цена</div><div class="val">${fmt(list.reduce((s,d)=>s+dishPrice(d),0)/list.length)}</div><div class="delta">с учётом скидок</div></div>
     <div class="a-stat"><div class="lbl">Синхронизация с iiko</div><div class="val" style="font-size:18px;color:#F0B45A">Не настроена</div><div class="delta">Меню ведётся вручную</div></div>
   </div>
 
@@ -390,7 +400,7 @@ function adminMenu(){
             <td><b>${d.name}</b>${d.badge?`<div class="muted" style="font-size:11.5px;margin-top:2px">${d.badge}</div>`:''}</td>
             <td class="muted nw">${CATEGORIES.find(c=>c.id===d.cat).name}</td>
             <td class="muted nw">${d.unit}</td>
-            <td class="nw"><b>${fmt(d.price)}</b></td>
+            <td class="nw"><b>${fmt(dishPrice(d))}</b>${d.salePercent?`<div class="muted" style="font-size:11.5px"><s>${fmt(d.price)}</s> · −${d.salePercent}%</div>`:''}</td>
             <td class="nw">
               <button class="a-btn star ${d.popular?'is-on':''}" aria-pressed="${d.popular?'true':'false'}"
                 aria-label="${d.popular?'Убрать «'+d.name+'» с главной':'Показать «'+d.name+'» на главной'}"
@@ -415,7 +425,7 @@ function adminMenu(){
             <div class="a-card-title"><b>${d.name}</b>${d.badge?`<span class="muted">${d.badge}</span>`:''}</div>
             <div class="muted" style="font-size:12.5px">${CATEGORIES.find(c=>c.id===d.cat).name} · ${d.unit}</div>
             <div class="a-card-row">
-              <b>${fmt(d.price)}</b>
+              <b>${fmt(dishPrice(d))}</b>${d.salePercent?`<span class="muted"><s>${fmt(d.price)}</s> · −${d.salePercent}%</span>`:''}
               <span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span>
             </div>
             <div class="a-row">
@@ -437,7 +447,7 @@ function adminMenu(){
       <div class="sum-row">
         <span class="row-star">${icon('star')}<span>${d.name}</span>${dishAvailable(d)?'':'<span class="a-pill red" style="margin-left:8px">в стоп-листе — гостю не виден</span>'}</span>
         <span class="val">
-          <span class="muted" style="font-size:12px;margin-right:8px">${fmt(d.price)}</span>
+          <span class="muted" style="font-size:12px;margin-right:8px">${fmt(dishPrice(d))}</span>
           <button class="a-btn" data-act="admin-featured" data-id="${d.id}" aria-label="Убрать «${d.name}» с главной">${icon('x')}</button>
         </span>
       </div>`).join('') : `<div class="sum-row"><span>Ничего не отмечено — лента на главной пустая</span><span class="val">0 из ${RULES.featuredMax}</span></div>`}
@@ -463,6 +473,7 @@ function adminMenu(){
 /* ------------------------------- маркетинг ------------------------------- */
 
 function adminMarketing(){
+  const ownBanner = !!admin.bannerDraft.img && !DISH_IMAGES.includes(admin.bannerDraft.img);
   return `
   <div class="a-grid a-grid-4" style="margin-bottom:18px">
     <div class="a-stat"><div class="lbl">Активных промокодов</div><div class="val lime">${activePromos().length}</div><div class="delta">всего в базе: ${PROMOS.length}</div></div>
@@ -500,16 +511,21 @@ function adminMarketing(){
           </article>`).join('')}
       </div>
       <h2 style="margin-top:20px">Новый промокод</h2>
-      <div class="a-grid a-grid-3" style="gap:10px">
-        <input class="input-plain" aria-label="Код промокода" data-act="admin-draft" data-field="code" placeholder="Код, напр. AUTUMN25" value="${admin.promoDraft.code}">
-        <select class="input-plain" aria-label="Тип скидки" data-act="admin-draft" data-field="type">
-          <option value="percent" ${admin.promoDraft.type==='percent'?'selected':''}>Процент</option>
-          <option value="fixed" ${admin.promoDraft.type==='fixed'?'selected':''}>Фиксированная сумма</option>
-          <option value="delivery" ${admin.promoDraft.type==='delivery'?'selected':''}>Бесплатная доставка</option>
-        </select>
-        <input class="input-plain" type="number" min="1" aria-label="Размер скидки" inputmode="numeric" data-act="admin-draft" data-field="value" value="${admin.promoDraft.value}">
+      <p class="a-lead-sm">Скидка на всю корзину: гость вводит код на оплате или нажимает на связанный баннер. Минимум 0 ₽ — без ограничения по сумме.</p>
+      <div class="a-grid a-grid-2" style="gap:10px">
+        <label class="a-labeled"><span>Код для гостя</span><input class="input-plain" data-act="admin-draft" data-field="code" placeholder="AUTUMN25" value="${esc(admin.promoDraft.code)}"></label>
+        <label class="a-labeled"><span>Что уменьшаем</span><select class="input-plain" data-act="admin-draft" data-field="type">
+          <option value="percent" ${admin.promoDraft.type==='percent'?'selected':''}>Процент от заказа</option>
+          <option value="fixed" ${admin.promoDraft.type==='fixed'?'selected':''}>Сумма заказа, ₽</option>
+          <option value="delivery" ${admin.promoDraft.type==='delivery'?'selected':''}>Стоимость доставки</option>
+        </select></label>
+        <label class="a-labeled"><span>Размер скидки${admin.promoDraft.type==='percent'?', %':(admin.promoDraft.type==='fixed'?', ₽':'')}</span><input class="input-plain" id="promo-value" type="number" min="0" max="${admin.promoDraft.type==='percent'?'90':''}" inputmode="numeric" data-act="admin-draft" data-field="value" value="${admin.promoDraft.value}" ${admin.promoDraft.type==='delivery'?'disabled':''}></label>
+        <label class="a-labeled"><span>Минимальный заказ, ₽</span><input class="input-plain" type="number" min="0" inputmode="numeric" data-act="admin-draft" data-field="min" value="${admin.promoDraft.min}"></label>
       </div>
-      <button class="a-btn primary" style="margin-top:12px" data-act="admin-promo-create">Создать промокод</button>
+      <div class="a-row" style="margin-top:12px">
+        <button class="a-btn primary" data-act="admin-promo-create">Создать промокод</button>
+        <button class="a-btn" data-act="admin-section" data-section="menu">Скидка на одно блюдо →</button>
+      </div>
     </div>
 
     <div class="a-panel">
@@ -518,56 +534,73 @@ function adminMarketing(){
         ${BANNERS.filter(b => b.active).length} из ${BANNERS.length} показываются гостю. Порядок ниже = порядок карточек в ленте, изменения видны сразу.
       </div>
       ${BANNERS.map((b, i) => `
-        <div class="a-order" style="margin-bottom:10px">
-          <div class="row between" style="gap:10px">
-            <div style="font-weight:700">${b.title}</div>
-            <div class="row gap-6">
-              <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="-1" ${i===0?'disabled':''} aria-label="Выше">↑</button>
-              <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="1" ${i===BANNERS.length-1?'disabled':''} aria-label="Ниже">↓</button>
+        <div class="a-order a-banner-row" style="margin-bottom:10px">
+          <img class="a-banner-thumb" src="${b.img}" alt="">
+          <div class="a-banner-info">
+            <div class="row between" style="gap:10px">
+              <div style="font-weight:700">${b.title}</div>
+              <div class="row gap-6">
+                <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="-1" ${i===0?'disabled':''} aria-label="Выше">↑</button>
+                <button class="a-btn" data-act="admin-banner-move" data-banner="${b.id}" data-dir="1" ${i===BANNERS.length-1?'disabled':''} aria-label="Ниже">↓</button>
+              </div>
             </div>
-          </div>
-          <div class="muted" style="font-size:12.5px;margin-top:4px">${bannerKind(b)} · ${b.sub}</div>
-          <div class="a-row" style="margin-top:10px">
-            <span class="a-pill ${b.active?'lime':''}">${b.active?'Показывается':'Скрыт'}</span>
-            <button class="a-btn" data-act="admin-banner-toggle" data-banner="${b.id}">${b.active?'Выключить':'Показать'}</button>
+            <div class="muted" style="font-size:12.5px;margin-top:4px"><span class="a-pill olive">Метка: ${b.tag}</span> ${bannerKind(b)} · ${b.sub}</div>
+            <div class="a-row" style="margin-top:10px">
+              <span class="a-pill ${b.active?'lime':''}">${b.active?'Показывается':'Скрыт'}</span>
+              <button class="a-btn" data-act="admin-banner-edit" data-banner="${b.id}">${icon('edit')} Изменить</button>
+              <button class="a-btn" data-act="admin-banner-toggle" data-banner="${b.id}">${b.active?'Выключить':'Показать'}</button>
+            </div>
           </div>
         </div>`).join('')}
 
-      <h2 style="margin-top:20px">Новая акция на главной</h2>
-      <p class="a-lead-sm">Карточка появится в карусели на главной и на экране «Акции» — сразу, как только создана.</p>
+      <h2 style="margin-top:20px">${admin.bannerDraft.id ? 'Изменить акцию' : 'Новая акция на главной'}</h2>
+      <p class="a-lead-sm">Метка «−15%» — это текст на картинке, а не сама скидка. Скидку считает выбранный промокод; после его выбора метка подставится автоматически, но её можно изменить.</p>
       <div id="bannerForm">
       <div class="a-grid a-grid-2" style="gap:10px">
-        <select class="input-plain" id="banner-kind" aria-label="Куда ведёт акция" data-act="admin-banner-draft" data-field="kind">
+        <label class="a-labeled"><span>Что открывает баннер</span><select class="input-plain" id="banner-kind" data-act="admin-banner-draft" data-field="kind">
           <option value="promo" ${admin.bannerDraft.kind==='promo'?'selected':''}>Промокод</option>
           <option value="dish" ${admin.bannerDraft.kind==='dish'?'selected':''}>Блюдо</option>
           <option value="screen" ${admin.bannerDraft.kind==='screen'?'selected':''}>Экран приложения</option>
-        </select>
-        <input class="input-plain" id="banner-tag" aria-label="Ярлык акции" data-act="admin-banner-draft" data-field="tag" placeholder="Ярлык, напр. −20%" value="${admin.bannerDraft.tag}">
+        </select></label>
+        <label class="a-labeled"><span>Метка на картинке</span><input class="input-plain" id="banner-tag" data-act="admin-banner-draft" data-field="tag" placeholder="−20% или Новинка" value="${esc(admin.bannerDraft.tag)}"></label>
       </div>
       <div style="margin-top:10px">
-        <input class="input-plain" id="banner-title" style="width:100%" aria-label="Заголовок акции" data-act="admin-banner-draft" data-field="title" placeholder="Заголовок, напр. Скидка 20% на второй сет" value="${admin.bannerDraft.title}">
+        <input class="input-plain" id="banner-title" style="width:100%" aria-label="Заголовок акции" data-act="admin-banner-draft" data-field="title" placeholder="Заголовок, напр. Скидка 20% на второй сет" value="${esc(admin.bannerDraft.title)}">
       </div>
       <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
-        <input class="input-plain" id="banner-sub" aria-label="Подпись под заголовком" data-act="admin-banner-draft" data-field="sub" placeholder="Подпись: промокод, условия" value="${admin.bannerDraft.sub}">
-        <input class="input-plain" id="banner-cta" aria-label="Надпись на кнопке" data-act="admin-banner-draft" data-field="cta" placeholder="Кнопка: Применить код" value="${admin.bannerDraft.cta}">
+        <input class="input-plain" id="banner-sub" aria-label="Подпись под заголовком" data-act="admin-banner-draft" data-field="sub" placeholder="Подпись: промокод, условия" value="${esc(admin.bannerDraft.sub)}">
+        <input class="input-plain" id="banner-cta" aria-label="Надпись на кнопке" data-act="admin-banner-draft" data-field="cta" placeholder="Кнопка: Применить код" value="${esc(admin.bannerDraft.cta)}">
       </div>
       <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
-        <select class="input-plain" id="banner-img" aria-label="Фото акции" data-act="admin-banner-draft" data-field="img">
+        <label class="a-labeled"><span>Картинка из набора</span><select class="input-plain" id="banner-img" data-act="admin-banner-draft" data-field="img">
+          ${ownBanner ? `<option value="${admin.bannerDraft.img}" selected>— свой баннер —</option>` : ''}
           ${DISH_IMAGES.map(p => `<option value="${p}" ${admin.bannerDraft.img===p?'selected':''}>${p.replace('assets/','')}</option>`).join('')}
-        </select>
+        </select></label>
         ${admin.bannerDraft.kind === 'promo' ? `
-          <select class="input-plain" id="banner-code" aria-label="Промокод акции" data-act="admin-banner-draft" data-field="code">
+          <label class="a-labeled"><span>Промокод, который даёт скидку</span><select class="input-plain" id="banner-code" data-act="admin-banner-draft" data-field="code">
             <option value="">— выберите промокод —</option>
             ${PROMOS.map(p => `<option value="${p.code}" ${admin.bannerDraft.code===p.code?'selected':''}>${p.code} · ${p.active?'активен':'выключен'}</option>`).join('')}
-          </select>` : (admin.bannerDraft.kind === 'dish' ? `
-          <select class="input-plain" id="banner-dish" aria-label="Блюдо акции" data-act="admin-banner-draft" data-field="dish">
+          </select></label>` : (admin.bannerDraft.kind === 'dish' ? `
+          <label class="a-labeled"><span>Блюдо для открытия</span><select class="input-plain" id="banner-dish" data-act="admin-banner-draft" data-field="dish">
             ${DISHES.map(d => `<option value="${d.id}" ${admin.bannerDraft.dish===d.id?'selected':''}>${d.name}</option>`).join('')}
-          </select>` : `
-          <select class="input-plain" id="banner-screen" aria-label="Экран приложения" data-act="admin-banner-draft" data-field="screen">
+          </select></label>` : `
+          <label class="a-labeled"><span>Экран приложения</span><select class="input-plain" id="banner-screen" data-act="admin-banner-draft" data-field="screen">
             ${['profile','promos','orders','favorites','restaurant','catalog'].map(k => `<option value="${k}" ${admin.bannerDraft.screen===k?'selected':''}>${SCREENS[k].title}</option>`).join('')}
-          </select>`)}
+          </select></label>`)}
       </div>
-      <button class="a-btn primary" style="margin-top:12px" data-act="admin-banner-create">Создать акцию</button>
+      <div class="a-photo a-banner-photo">
+        <img class="a-banner-preview" src="${admin.bannerDraft.img}" alt="Предпросмотр баннера">
+        <div class="a-photo-fields">
+          <label class="a-photo-title" for="bannerPhoto">Свой баннер — JPG или PNG</label>
+          <input type="file" id="bannerPhoto" class="a-file" accept="image/*" data-act="admin-banner-photo">
+          <div class="muted" style="font-size:12px">Рекомендуем 1600 × 800 px, горизонтальный 2:1. На главной верх и низ обрежутся чуть сильнее — текст и блюдо держите по центру. Большой файл ужмётся до 1600 px по ширине.</div>
+          ${ownBanner ? '<button class="a-btn" data-act="admin-banner-photo-reset">Вернуть картинку из набора</button>' : ''}
+        </div>
+      </div>
+      <div class="a-row" style="margin-top:12px">
+        <button class="a-btn primary" data-act="admin-banner-create">${admin.bannerDraft.id ? 'Сохранить акцию' : 'Создать акцию'}</button>
+        ${admin.bannerDraft.id ? '<button class="a-btn" data-act="admin-banner-cancel">Отмена</button>' : ''}
+      </div>
       </div>
 
       <h2 style="margin-top:20px">Push-рассылка</h2>
@@ -772,6 +805,7 @@ function adminAnalytics(){
 
 function adminSettings(){
   const s = admin.settings;
+  const l = admin.locationDraft;
   return `
   <div class="a-grid a-grid-2">
     <div class="a-panel">
@@ -792,26 +826,46 @@ function adminSettings(){
     <div>
       <div class="a-panel" style="margin-bottom:16px">
         <h2>Точки ресторана</h2>
-        ${LOCATIONS.map(l => `
+        <p class="a-lead-sm">Новая точка сразу появляется в самовывозе, на экране «О ресторане» и в списке для печати QR-меню.</p>
+        ${LOCATIONS.map(loc => `
           <div class="sum-row" style="align-items:flex-start">
             <div>
-              <div style="font-weight:600">${l.name}</div>
-              <div class="muted" style="font-size:12.5px">${l.address} · ${l.hours}</div>
+              <div style="font-weight:600">${esc(loc.name)}</div>
+              <div class="muted" style="font-size:12.5px">${esc(loc.address)} · ${loc.hours}</div>
+              <div class="a-pill ${loc.service==='pickup'?'olive':'lime'}" style="margin-top:7px">${esc(loc.delivery)}</div>
             </div>
-            <span class="a-pill lime">${l.delivery}</span>
+            <button class="a-btn" data-act="admin-location-edit" data-id="${loc.id}" aria-label="Изменить ${esc(loc.name)}">${icon('edit')}</button>
           </div>`).join('')}
+        <div id="locationForm" class="a-subform">
+          <h3>${l.id ? 'Изменить точку' : '+ Добавить точку'}</h3>
+          <div class="field"><label for="location-name">Название</label><input class="input-plain" id="location-name" data-act="admin-location-draft" data-field="name" placeholder="Васаби на Ленина" value="${esc(l.name)}"></div>
+          <div class="field"><label for="location-address">Адрес</label><input class="input-plain" id="location-address" data-act="admin-location-draft" data-field="address" placeholder="Город, улица, дом" value="${esc(l.address)}"></div>
+          <div class="a-grid a-grid-2" style="gap:10px">
+            <div class="field"><label for="location-open">Открытие</label><input class="input-plain" id="location-open" type="time" data-act="admin-location-draft" data-field="open" value="${l.open}"></div>
+            <div class="field"><label for="location-close">Закрытие</label><input class="input-plain" id="location-close" type="time" data-act="admin-location-draft" data-field="close" value="${l.close}"></div>
+          </div>
+          <div class="field"><label for="location-service">Как работает точка</label><select class="input-plain" id="location-service" data-act="admin-location-draft" data-field="service"><option value="delivery" ${l.service==='delivery'?'selected':''}>Доставка и самовывоз</option><option value="pickup" ${l.service==='pickup'?'selected':''}>Только самовывоз</option></select></div>
+          <div class="a-row"><button class="a-btn primary" data-act="admin-location-save">${l.id ? 'Сохранить точку' : 'Добавить точку'}</button>${l.id ? '<button class="a-btn" data-act="admin-location-cancel">Отмена</button>' : ''}</div>
+        </div>
       </div>
       <div class="a-panel">
-        <h2>Роли сотрудников</h2>
-        ${[['Администратор','меню, заказы, отчёты, сотрудники'],
-           ['Оператор заказов','приём, статус, печать чека'],
-           ['Курьер','выдача заказа, статус доставки']].map(r=>`
-          <div class="sum-row" style="align-items:flex-start">
-            <div>
-              <div style="font-weight:600">${r[0]}</div>
-              <div class="muted" style="font-size:12.5px">${r[1]}</div>
-            </div>
+        <h2>Сотрудники и роли</h2>
+        <p class="a-lead-sm">Выберите роль у человека или добавьте нового. Войти в демо-панель: приложение гостя → «Профиль» → «Доступ сотрудника».</p>
+        ${ADMIN_STAFF.map(person => `
+          <div class="sum-row a-staff-row">
+            <div><div style="font-weight:600">${esc(person.name)}</div><div class="muted" style="font-size:12.5px">${esc(person.phone)}</div><div class="muted" style="font-size:12px;margin-top:3px">${esc(STAFF_ROLES[person.role].description)}</div></div>
+            <label class="a-role-select"><span class="sr-only">Роль сотрудника ${esc(person.name)}</span><select class="input-plain" data-act="admin-staff-role" data-id="${person.id}">${Object.entries(STAFF_ROLES).map(([id,r]) => `<option value="${id}" ${person.role===id?'selected':''}>${r.label}</option>`).join('')}</select></label>
           </div>`).join('')}
+        <div id="staffForm" class="a-subform">
+          <h3>+ Добавить сотрудника</h3>
+          <div class="a-grid a-grid-2" style="gap:10px">
+            <div class="field"><label for="staff-name">Имя</label><input class="input-plain" id="staff-name" data-act="admin-staff-draft" data-field="name" autocomplete="off" value="${esc(admin.staffDraft.name)}"></div>
+            <div class="field"><label for="staff-phone">Телефон</label><input class="input-plain" id="staff-phone" type="tel" data-act="admin-staff-draft" data-field="phone" autocomplete="off" placeholder="+7 900 000-00-00" value="${esc(admin.staffDraft.phone)}"></div>
+          </div>
+          <div class="field"><label for="staff-role">Роль</label><select class="input-plain" id="staff-role" data-act="admin-staff-draft" data-field="role">${Object.entries(STAFF_ROLES).map(([id,r]) => `<option value="${id}" ${admin.staffDraft.role===id?'selected':''}>${r.label}</option>`).join('')}</select></div>
+          <button class="a-btn primary" data-act="admin-staff-add">Добавить в демо-список</button>
+          <p class="a-form-note">Прототип не отправляет SMS и не создаёт пароль. Роль здесь показывает обязанности, но не ограничивает кнопки: для настоящих приглашений и прав нужен сервер.</p>
+        </div>
       </div>
     </div>
   </div>`;
@@ -1044,7 +1098,7 @@ document.addEventListener('click', ev => {
     const d = dishById(el.dataset.id);
     if (!d) return;
     admin.dishDraft = {
-      id:d.id, name:d.name, cat:d.cat, price:d.price, unit:d.unit || '',
+      id:d.id, name:d.name, cat:d.cat, price:d.price, salePercent:d.salePercent || 0, unit:d.unit || '',
       badge:d.badge || '', desc:d.desc || '', composition:d.composition || '',
       allergens:(d.allergens || []).join(', '), img:d.img, defaultImg:d.img, popular:!!d.popular
     };
@@ -1074,8 +1128,10 @@ document.addEventListener('click', ev => {
     const dr = readDraftFields('dishForm', 'admin-dish-draft', admin.dishDraft);
     const name = (dr.name || '').trim();
     const price = Number(dr.price);
+    const salePercent = Number(dr.salePercent) || 0;
     if (!name){ toast('Введите название блюда'); return; }
     if (!isFinite(price) || price <= 0){ toast('Укажите цену больше нуля'); return; }
+    if (salePercent < 0 || salePercent > 90){ toast('Скидка блюда — от 0 до 90%'); return; }
     if (dr.popular && DISHES.filter(x => x.popular && x.id !== dr.id).length >= RULES.featuredMax){
       toast('В ленте главной уже ' + RULES.featuredMax + ' блюд — снимите одно, чтобы поставить другое');
       return;
@@ -1086,6 +1142,7 @@ document.addEventListener('click', ev => {
     if (existing){
       existing.name = name;
       existing.price = price;
+      existing.salePercent = salePercent;
       existing.cat = dr.cat;
       existing.unit = unit;
       existing.badge = (dr.badge || '').trim();
@@ -1102,7 +1159,7 @@ document.addEventListener('click', ev => {
     }
     DISHES.push({
       id:'d-' + Date.now().toString(36),
-      name, price, cat:dr.cat, popular:dr.popular,
+      name, price, salePercent, cat:dr.cat, popular:dr.popular,
       unit, img:dr.img,
       badge:(dr.badge || '').trim(),
       desc:(dr.desc || '').trim() || 'Новая позиция в меню «васаби.».',
@@ -1114,6 +1171,74 @@ document.addEventListener('click', ev => {
     renderAdmin();
     render();
     toast('Блюдо «' + name + '» добавлено в меню — гость видит его сразу');
+  }
+  if (act === 'admin-banner-edit'){
+    const b = BANNERS.find(x => x.id === el.dataset.banner);
+    if (!b) return;
+    admin.bannerDraft = {
+      id:b.id, kind:b.kind, tag:b.tag || '', title:b.title || '', sub:b.sub || '', cta:b.cta || '',
+      img:b.img, defaultImg:DISH_IMAGES.includes(b.img) ? b.img : 'assets/sashimi.jpg',
+      code:b.code || '', dish:b.dish || 'd-set-w', screen:b.screen || 'profile'
+    };
+    renderAdmin();
+    const form = document.getElementById('bannerForm');
+    if (form) form.scrollIntoView({ block:'start', behavior:'smooth' });
+    const title = document.getElementById('banner-title');
+    if (title) title.focus({ preventScroll:true });
+  }
+  if (act === 'admin-banner-cancel'){
+    admin.bannerDraft = emptyBannerDraft();
+    renderAdmin();
+  }
+  if (act === 'admin-banner-photo-reset'){
+    admin.bannerDraft.img = admin.bannerDraft.defaultImg || 'assets/sashimi.jpg';
+    renderAdmin();
+  }
+  if (act === 'admin-location-edit'){
+    const loc = LOCATIONS.find(x => x.id === el.dataset.id);
+    if (!loc) return;
+    admin.locationDraft = { id:loc.id, name:loc.name, address:loc.address, open:loc.open, close:loc.close, service:loc.service || 'delivery' };
+    renderAdmin();
+    const input = document.getElementById('location-name');
+    if (input){ input.scrollIntoView({ block:'center', behavior:'smooth' }); input.focus({ preventScroll:true }); }
+  }
+  if (act === 'admin-location-cancel'){
+    admin.locationDraft = emptyLocationDraft();
+    renderAdmin();
+  }
+  if (act === 'admin-location-save'){
+    const dr = readDraftFields('locationForm', 'admin-location-draft', admin.locationDraft);
+    const name = (dr.name || '').trim();
+    const address = (dr.address || '').trim();
+    if (!name || !address){ toast('Укажите название и адрес точки'); return; }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dr.open) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(dr.close) || hm(dr.close) <= hm(dr.open)){
+      toast('Время закрытия должно быть позже открытия'); return;
+    }
+    const value = {
+      name, address, open:dr.open, close:dr.close, service:dr.service,
+      hours:dr.open + ' — ' + dr.close,
+      delivery:dr.service === 'pickup' ? 'Самовывоз от 20 мин' : 'Доставка от ' + fmt(RULES.deliveryPrice)
+    };
+    const existing = LOCATIONS.find(x => x.id === dr.id);
+    if (existing) Object.assign(existing, value);
+    else LOCATIONS.push({ id:'l-' + Date.now().toString(36), ...value });
+    admin.locationDraft = emptyLocationDraft();
+    renderAdmin();
+    render();
+    toast(existing ? 'Точка сохранена — гость видит изменения' : 'Точка добавлена в самовывоз и QR-меню');
+  }
+  if (act === 'admin-staff-add'){
+    const dr = readDraftFields('staffForm', 'admin-staff-draft', admin.staffDraft);
+    const name = (dr.name || '').trim();
+    const phone = normPhone(dr.phone);
+    if (!name){ toast('Введите имя сотрудника'); return; }
+    if (phone.length !== 11){ toast('Проверьте телефон сотрудника'); return; }
+    if (ADMIN_STAFF.some(s => normPhone(s.phone) === phone)){ toast('Сотрудник с таким телефоном уже есть'); return; }
+    ADMIN_STAFF.push({ id:'s-' + Date.now().toString(36), name, phone:formatPhone(phone), role:STAFF_ROLES[dr.role] ? dr.role : 'operator' });
+    admin.staffDraft = { name:'', phone:'', role:'operator' };
+    renderAdmin();
+    render();
+    toast(name + ' добавлен — можно выбрать его в «Профиле» → «Доступ сотрудника»');
   }
   if (act === 'admin-banner-create'){
     const dr = readDraftFields('bannerForm', 'admin-banner-draft', admin.bannerDraft);
@@ -1133,20 +1258,26 @@ document.addEventListener('click', ev => {
       if (!SCREENS[dr.screen]){ toast('Выберите экран приложения'); return; }
       link.screen = dr.screen;
     }
-    BANNERS.push({
-      id:'b-' + Date.now().toString(36),
-      kind:dr.kind, active:true,
+    const value = {
+      kind:dr.kind,
       tag:(dr.tag || '').trim() || 'Акция',
       img:dr.img,
       title,
       sub:(dr.sub || '').trim(),
       cta:(dr.cta || '').trim() || (dr.kind === 'dish' ? 'Открыть блюдо' : (dr.kind === 'promo' ? 'Применить код' : 'Открыть')),
       ...link
-    });
+    };
+    const existing = BANNERS.find(x => x.id === dr.id);
+    if (existing){
+      delete existing.code; delete existing.dish; delete existing.screen;
+      Object.assign(existing, value);
+    } else {
+      BANNERS.push({ id:'b-' + Date.now().toString(36), active:true, ...value });
+    }
     admin.bannerDraft = emptyBannerDraft();
     renderAdmin();
     render();
-    toast('Акция «' + title + '» — уже в карусели на главной');
+    toast(existing ? 'Акция «' + title + '» сохранена' : 'Акция «' + title + '» — уже в карусели на главной');
   }
   if (act === 'admin-bonus-open'){
     const c = ADMIN_CLIENTS.find(x => x.phone === el.dataset.phone);
@@ -1219,8 +1350,8 @@ document.addEventListener('click', ev => {
     const d = dishById('d-sing');
     state.orders.unshift({
       id:'o'+Date.now(), no: Math.random().toString(36).slice(2,8), date: nowRu(),
-      items:[{ dishId:d.id, name:d.name, qty:1, price:d.price, mods:[] }],
-      sub:d.price, delivery:RULES.deliveryPrice, discount:0, bonus:0, total:d.price + RULES.deliveryPrice,
+      items:[{ dishId:d.id, name:d.name, qty:1, price:dishPrice(d), mods:[] }],
+      sub:dishPrice(d), delivery:RULES.deliveryPrice, discount:0, bonus:0, total:dishPrice(d) + RULES.deliveryPrice,
       status:'new', address:'Ташкентская 198', comment:'Домофон 42', payment:'card', promo:null,
       deliveryType:'delivery', locationId:'l1', addressId:'a1', slot:null,
       customer:'Гость с терминала', phone:'+7 926 640-08-31'
@@ -1245,9 +1376,12 @@ document.addEventListener('click', ev => {
     if (!code){ toast('Введите код промокода'); return; }
     if (PROMOS.some(p => p.code === code)){ toast('Промокод ' + code + ' уже есть'); return; }
     const type = admin.promoDraft.type;
-    const value = Math.max(0, Number(admin.promoDraft.value) || 0);
+    const value = type === 'delivery' ? 0 : Number(admin.promoDraft.value);
+    const min = Math.max(0, Number(admin.promoDraft.min) || 0);
+    if (type === 'percent' && (!isFinite(value) || value < 1 || value > 90)){ toast('Процент скидки — от 1 до 90'); return; }
+    if (type === 'fixed' && (!isFinite(value) || value <= 0)){ toast('Укажите скидку больше нуля'); return; }
     PROMOS.push({
-      code, type, value, min: 0, active: true,
+      code, type, value, min, active: true,
       label: type === 'percent' ? `−${value}% на заказ`
            : (type === 'fixed' ? `−${fmt(value)}` : 'Бесплатная доставка')
     });
@@ -1290,6 +1424,8 @@ document.addEventListener('input', ev => {
   if (el.dataset.act === 'admin-draft'){ admin.promoDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-dish-draft'){ admin.dishDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-banner-draft'){ admin.bannerDraft[el.dataset.field] = el.value; }
+  if (el.dataset.act === 'admin-location-draft'){ admin.locationDraft[el.dataset.field] = el.value; }
+  if (el.dataset.act === 'admin-staff-draft'){ admin.staffDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-bonus-amount'){ admin.bonusAmount = el.value; }
   if (el.dataset.act === 'admin-import-text'){
     admin.clientImport.text = el.value;
@@ -1322,11 +1458,29 @@ document.addEventListener('change', ev => {
     renderAdmin();
     return;
   }
+  if (el.dataset.act === 'admin-draft' && el.dataset.field === 'type'){
+    renderAdmin();
+    return;
+  }
+  if (el.dataset.act === 'admin-staff-role'){
+    const person = ADMIN_STAFF.find(s => s.id === el.dataset.id);
+    if (!person || !STAFF_ROLES[el.value]) return;
+    person.role = el.value;
+    renderAdmin();
+    render();
+    toast(person.name + ' — роль: ' + roleLabel(person.role) + ' (демо, без ограничения прав)');
+    return;
+  }
   if (el.dataset.act === 'admin-banner-draft'){
     admin.bannerDraft[el.dataset.field] = el.value;
     /* смена типа акции меняет набор полей и подпись кнопки — перерисовываем панель */
     if (el.dataset.field === 'kind'){
       admin.bannerDraft.cta = el.value === 'dish' ? 'Открыть блюдо' : (el.value === 'promo' ? 'Применить код' : 'Открыть');
+      renderAdmin();
+    }
+    if (el.dataset.field === 'code'){
+      const p = PROMOS.find(x => x.code === el.value);
+      if (p) admin.bannerDraft.tag = p.type === 'percent' ? '−' + p.value + '%' : (p.type === 'fixed' ? '−' + fmt(p.value) : 'Доставка 0 ₽');
       renderAdmin();
     }
     return;
@@ -1357,6 +1511,20 @@ document.addEventListener('change', ev => {
       renderAdmin();
       toast('Фото загружено — сохраните блюдо, чтобы оно появилось в меню');
     }).catch(() => toast('Не получилось прочитать фото'));
+    return;
+  }
+  if (el.dataset.act === 'admin-banner-photo'){
+    const file = el.files && el.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type || '')){
+      toast('Нужен файл картинки — jpg или png');
+      return;
+    }
+    readImageFile(file, 1600).then(dataUrl => {
+      admin.bannerDraft.img = dataUrl;
+      renderAdmin();
+      toast('Баннер загружен — сохраните акцию, чтобы показать его гостю');
+    }).catch(() => toast('Не получилось прочитать баннер'));
     return;
   }
 });
