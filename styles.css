@@ -4,6 +4,9 @@
    ========================================================================= */
 
 :root{
+  /* тёмная схема: нативная полоса прокрутки в браузере оставалась белой
+     и выбивалась из оформления, а выпадающие списки тоже были светлыми */
+  color-scheme:dark;
   --bg:#080B08;
   --panel:#0D110D;
   --surface:#151B14;
@@ -46,6 +49,16 @@ h1,h2,h3,h4,p,dl,dd{margin:0;}
 ul{margin:0;padding:0;list-style:none;}
 .ic{width:20px;height:20px;flex:none;}
 [hidden]{display:none !important;}
+
+/* ---------- полосы прокрутки ----------
+   Свой бегунок вместо системного: одинаково тёмный в панели демо, админке
+   и инструкции, а не белая полоса на общем тёмном фоне. */
+*{scrollbar-width:thin;scrollbar-color:#3B4733 transparent;}
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#3B4733;border-radius:999px;border:2px solid transparent;background-clip:content-box;}
+::-webkit-scrollbar-thumb:hover{background:#4C5B3E;background-clip:content-box;}
+::-webkit-scrollbar-corner{background:transparent;}
 
 /* ---------- касание, фокус, скрытый текст ---------- */
 button,a[href],input,select,textarea,[role=button],[data-act]{
@@ -1134,6 +1147,8 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
   .topbar,.stage{display:none !important;}
   .qr-print-root{display:block !important;}
   body{background:#fff;}
+  /* печатный лист белый: возвращаем светлую схему, иначе браузер перекрасит фон */
+  :root{color-scheme:light;}
   .qr-print-page{padding:0;page-break-after:always;}
   .qr-print-page:last-child{page-break-after:auto;}
   .qr-print-card{print-color-adjust:exact;}
