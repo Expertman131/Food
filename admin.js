@@ -1689,7 +1689,7 @@ document.addEventListener('click', ev => {
   if (act === 'admin-new-order'){
     const d = dishById('d-sing');
     const order = {
-      id:'o'+Date.now(), no: Math.random().toString(36).slice(2,8), date: nowRu(),
+      id:'o'+Date.now(), no: nextOrderNo(), date: nowRu(),
       items:[{ dishId:d.id, name:d.name, qty:1, price:dishPrice(d), mods:[] }],
       sub:dishPrice(d), delivery:RULES.deliveryPrice, discount:0, bonus:0, total:dishPrice(d) + RULES.deliveryPrice,
       status:'new', address:'Ташкентская 198', comment:'Домофон 42', payment:'card', promo:null,

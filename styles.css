@@ -1019,7 +1019,9 @@ button.promo-cta{background:none;border:0;width:100%;text-align:left;color:inher
   background:var(--surface);border-radius:20px;padding:var(--sp-32) var(--sp-22);
   text-align:center;color:var(--muted);font-size:var(--fs-14);line-height:1.55;
 }
-.empty .ic{width:34px;height:34px;color:var(--lime);opacity:.7;}
+/* только иллюстрация пустого состояния: правило на .ic цепляло и стрелки
+   внутри лаймовых кнопок — там значок становился того же цвета, что фон */
+.empty .empty-ico{width:34px;height:34px;color:var(--lime);opacity:.7;}
 
 .err{color:var(--danger);font-size:var(--fs-12);margin-top:var(--sp-8);}
 .ok{color:var(--lime);font-size:var(--fs-12);margin-top:var(--sp-8);}

@@ -365,9 +365,17 @@ function nowRu(){
   return `${d.getDate()} ${m} в ${time}`;
 }
 
+/* Номер заказа — короткий и читаемый вслух («2481» вместо «bb5cc2»).
+   Считаем от максимального уже выданного, чтобы номера не повторялись. */
+const ORDER_NO_START = 2400;
+const nextOrderNo = () => {
+  const last = state.orders.reduce((m,o) => Math.max(m, parseInt(o.no, 10) || 0), ORDER_NO_START);
+  return String(last + 1);
+};
+
 function seedOrders(){
   state.orders = [
-    { id:'o-seed', no:'bb5cc2', date:'27 октября в 15:11',
+    { id:'o-seed', no:'2401', date:'27 октября в 15:11',
       items:[{ dishId:'d-phil', name:'Филадельфия', qty:1, price:590, mods:[] }],
       sub:590, delivery:199, discount:0, bonus:0, total:789,
       status:'new', deliveryType:'delivery', locationId:'l1', addressId:'a1', slot:null,
@@ -736,7 +744,7 @@ function scrFavorites(){
   ${!list.length ? `
   <section class="section">
     <div class="empty">
-      <div style="margin-bottom:var(--sp-12)">${icon('heart')}</div>
+      <div style="margin-bottom:var(--sp-12)">${icon('heart','empty-ico')}</div>
       Пока пусто. Нажмите на сердечко в карточке блюда — и оно появится здесь.
       <div style="margin-top:var(--sp-18)"><button class="btn-lime" style="width:auto;margin:0 auto" data-act="go" data-screen="catalog"><span>Открыть меню</span>${icon('arrowRight')}</button></div>
     </div>
@@ -768,7 +776,7 @@ function scrCart(){
     <section class="section" style="padding-top:var(--sp-28)">
       <h1 class="h1">Ваш вкусный выбор</h1>
       <div class="empty" style="margin-top:var(--sp-24)">
-        <div style="margin-bottom:var(--sp-12)">${icon('bag')}</div>
+        <div style="margin-bottom:var(--sp-12)">${icon('bag','empty-ico')}</div>
         В корзине пока пусто.<br>Выберите что-нибудь из меню.
         <div style="margin-top:var(--sp-18)"><button class="btn-lime" style="width:auto;margin:0 auto" data-act="go" data-screen="catalog"><span>Открыть меню</span>${icon('arrowRight')}</button></div>
       </div>
@@ -1961,7 +1969,7 @@ const ACTIONS = {
     setTimeout(() => {
       const t = totals();
       const order = {
-        id:'o'+Date.now(), no: Math.random().toString(36).slice(2,8), date: nowRu(),
+        id:'o'+Date.now(), no: nextOrderNo(), date: nowRu(),
         items: cartLines().map(l => ({ dishId:l.dishId, name:dishById(l.dishId).name, qty:l.qty, price:lineUnit(l), mods:l.mods })),
         sub:t.sub, delivery:t.delivery, discount:t.discount, bonus:t.bonusUse, total:t.total,
         bonusEarn:RULES.bonusEnabled && state.deliveryType !== 'table' ? Math.floor(Math.max(0, t.sub - t.discount) * RULES.bonusAccrual / 100) : 0,
