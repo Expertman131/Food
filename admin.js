@@ -184,7 +184,7 @@ function markScrollPanels(){
 function adminSub(){
   switch (admin.section){
     case 'orders':   return 'Лента в реальном времени · обновляется по WebSocket';
-    case 'menu':     return 'Категории, блюда, модификаторы и стоп-лист';
+    case 'menu':     return 'Добавить блюдо и цены, стоп-лист, модификаторы';
     case 'qr':       return 'QR-коды на столы: печать листов и ссылка меню';
     case 'marketing':return 'Промокоды, бонусы, баннеры и push-рассылки';
     case 'clients':  return 'База гостей, сегменты и ручные начисления бонусов';
@@ -283,7 +283,7 @@ function adminOrders(){
   : `<div class="a-panel" style="text-align:center;color:var(--muted)">В этой вкладке пусто</div>`}
 
   <div class="a-panel" style="margin-top:16px">
-    <<h2>Передача в iikoDelivery</h2>
+    <h2>Передача в iikoDelivery</h2>
     <p class="muted" style="font-size:13px">Автоматическая передача заказа в iikoDelivery, печать на кухню в iikoKitchen и фискализация в iikoCash. Требуется лицензия iikoDelivery + iikoKitchen и API-ключи тестового стенда.</p>
     <div class="a-row" style="margin-top:12px">
       <span class="a-pill warn">${icon('info')} Не подключено</span>
@@ -301,6 +301,37 @@ function adminMenu(){
   const active = list.filter(dishAvailable).length;
   const stopped = list.length - active;
   return `
+  <div class="a-panel" id="dishForm" style="margin-bottom:18px">
+    <h2>${admin.dishDraft.id ? 'Редактирование блюда' : 'Добавить блюдо в меню'}</h2>
+    <p class="muted" style="font-size:13px">Позиция появляется в меню гостя сразу: и в каталоге, и в поиске, и в QR-меню в зале.</p>
+    <div class="a-grid a-grid-3" style="gap:10px">
+      <input class="input-plain" id="dish-name" aria-label="Название блюда" data-act="admin-dish-draft" data-field="name" placeholder="Название, напр. Темпура с креветкой" value="${admin.dishDraft.name}">
+      <select class="input-plain" id="dish-cat" aria-label="Категория блюда" data-act="admin-dish-draft" data-field="cat">
+        ${CATEGORIES.filter(c => c.id !== 'all').map(c => `<option value="${c.id}" ${admin.dishDraft.cat===c.id?'selected':''}>${c.name}</option>`).join('')}
+      </select>
+      <input class="input-plain" id="dish-price" type="number" min="1" inputmode="numeric" aria-label="Цена блюда, ₽" data-act="admin-dish-draft" data-field="price" placeholder="Цена, ₽" value="${admin.dishDraft.price}">
+      <input class="input-plain" id="dish-unit" aria-label="Вес или количество" data-act="admin-dish-draft" data-field="unit" placeholder="Вес: 8 шт. · 260 г" value="${admin.dishDraft.unit}">
+      <input class="input-plain" id="dish-badge" aria-label="Пометка над названием" data-act="admin-dish-draft" data-field="badge" placeholder="Пометка, напр. Хит" value="${admin.dishDraft.badge}">
+      <select class="input-plain" id="dish-img" aria-label="Фото блюда" data-act="admin-dish-draft" data-field="img">
+        ${DISH_IMAGES.map(p => `<option value="${p}" ${admin.dishDraft.img===p?'selected':''}>${p.replace('assets/','')}</option>`).join('')}
+      </select>
+    </div>
+    <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
+      <textarea class="input-plain" id="dish-desc" rows="2" aria-label="Описание блюда" data-act="admin-dish-draft" data-field="desc" placeholder="Описание для гостя">${admin.dishDraft.desc}</textarea>
+      <textarea class="input-plain" id="dish-composition" rows="2" aria-label="Состав блюда" data-act="admin-dish-draft" data-field="composition" placeholder="Состав: рис, лосось, соевый соус…">${admin.dishDraft.composition}</textarea>
+    </div>
+    <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px;align-items:end">
+      <input class="input-plain" id="dish-allergens" aria-label="Аллергены через запятую" data-act="admin-dish-draft" data-field="allergens" placeholder="Аллергены через запятую: рыба, соя, молоко" value="${admin.dishDraft.allergens}">
+      <button class="switch-row" role="switch" aria-checked="${admin.dishDraft.popular?'true':'false'}" data-act="admin-dish-popular">
+        <span>Показывать на главной</span><span class="opt-toggle ${admin.dishDraft.popular?'is-on':''}" aria-hidden="true"></span>
+      </button>
+    </div>
+    <div class="a-row dish-form-actions">
+      <button class="a-btn primary" data-act="admin-dish-save">${admin.dishDraft.id ? 'Сохранить блюдо' : 'Создать блюдо'}</button>
+      ${admin.dishDraft.id ? '<button class="a-btn" data-act="admin-dish-cancel">Отмена</button>' : ''}
+    </div>
+  </div>
+
   <div class="a-grid a-grid-4" style="margin-bottom:18px">
     <div class="a-stat"><div class="lbl">Позиций в меню</div><div class="val">${list.length}</div><div class="delta">${cats.length} категорий</div></div>
     <div class="a-stat"><div class="lbl">Активных</div><div class="val lime">${active}</div><div class="delta">${stopped} в стоп-листе</div></div>
@@ -309,7 +340,10 @@ function adminMenu(){
   </div>
 
   <div class="a-panel">
-    <<h2>Блюда и цены</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+      <h2 style="margin-bottom:0">Блюда и цены</h2>
+      <button class="a-btn primary" data-act="admin-dish-new">+ Добавить блюдо</button>
+    </div>
     <table class="a-table">
       <thead><tr><th scope="col"><span class="sr-only">Фото</span></th><th scope="col">Название</th><th scope="col">Категория</th><th scope="col">Вес</th><th scope="col">Цена</th><th scope="col">На главной</th><th scope="col">Статус</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
@@ -337,39 +371,8 @@ function adminMenu(){
     </table>
   </div>
 
-  <div class="a-panel" style="margin-top:16px" id="dishForm">
-    <<h2>${admin.dishDraft.id ? 'Редактирование блюда' : 'Новое блюдо'}</h2>
-    <p class="muted" style="font-size:13px">Позиция появляется в меню гостя сразу: и в каталоге, и в поиске, и в QR-меню в зале.</p>
-    <div class="a-grid a-grid-3" style="gap:10px">
-      <input class="input-plain" id="dish-name" aria-label="Название блюда" data-act="admin-dish-draft" data-field="name" placeholder="Название, напр. Темпура с креветкой" value="${admin.dishDraft.name}">
-      <select class="input-plain" id="dish-cat" aria-label="Категория блюда" data-act="admin-dish-draft" data-field="cat">
-        ${CATEGORIES.filter(c => c.id !== 'all').map(c => `<option value="${c.id}" ${admin.dishDraft.cat===c.id?'selected':''}>${c.name}</option>`).join('')}
-      </select>
-      <input class="input-plain" id="dish-price" type="number" min="1" inputmode="numeric" aria-label="Цена блюда, ₽" data-act="admin-dish-draft" data-field="price" placeholder="Цена, ₽" value="${admin.dishDraft.price}">
-      <input class="input-plain" id="dish-unit" aria-label="Вес или количество" data-act="admin-dish-draft" data-field="unit" placeholder="Вес: 8 шт. · 260 г" value="${admin.dishDraft.unit}">
-      <input class="input-plain" id="dish-badge" aria-label="Пометка над названием" data-act="admin-dish-draft" data-field="badge" placeholder="Пометка, напр. Хит" value="${admin.dishDraft.badge}">
-      <select class="input-plain" id="dish-img" aria-label="Фото блюда" data-act="admin-dish-draft" data-field="img">
-        ${DISH_IMAGES.map(p => `<option value="${p}" ${admin.dishDraft.img===p?'selected':''}>${p.replace('assets/','')}</option>`).join('')}
-      </select>
-    </div>
-    <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px">
-      <textarea class="input-plain" id="dish-desc" rows="2" aria-label="Описание блюда" data-act="admin-dish-draft" data-field="desc" placeholder="Описание для гостя">${admin.dishDraft.desc}</textarea>
-      <textarea class="input-plain" id="dish-composition" rows="2" aria-label="Состав блюда" data-act="admin-dish-draft" data-field="composition" placeholder="Состав: рис, лосось, соевый соус…">${admin.dishDraft.composition}</textarea>
-    </div>
-    <div class="a-grid a-grid-2" style="gap:10px;margin-top:10px;align-items:end">
-      <input class="input-plain" id="dish-allergens" aria-label="Аллергены через запятую" data-act="admin-dish-draft" data-field="allergens" placeholder="Аллергены через запятую: рыба, соя, молоко" value="${admin.dishDraft.allergens}">
-      <button class="switch-row" role="switch" aria-checked="${admin.dishDraft.popular?'true':'false'}" data-act="admin-dish-popular">
-        <span>Показывать на главной</span><span class="opt-toggle ${admin.dishDraft.popular?'is-on':''}" aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="a-row" style="margin-top:12px">
-      <button class="a-btn primary" data-act="admin-dish-save">${admin.dishDraft.id ? 'Сохранить блюдо' : 'Создать блюдо'}</button>
-      ${admin.dishDraft.id ? '<button class="a-btn" data-act="admin-dish-cancel">Отмена</button>' : ''}
-    </div>
-  </div>
-
   <div class="a-panel" style="margin-top:16px">
-    <<h2>Лента «Попробуйте любимое» на главной</h2>
+    <h2>Лента «Попробуйте любимое» на главной</h2>
     <p class="muted" style="font-size:13px">Отмеченные блюда гость видит на главной без прокрутки. Не больше ${RULES.featuredMax}: главная не должна превращаться в каталог.</p>
     ${featured.length ? featured.map(d => `
       <div class="sum-row">
@@ -383,15 +386,15 @@ function adminMenu(){
   </div>
 
   <div class="a-grid a-grid-3" style="margin-top:16px">
-    <div class="a-panel"><<h2>Категории</h2>
+    <div class="a-panel"><h2>Категории</h2>
       ${cats.map(c=>`<div class="sum-row"><span>${c.name}</span><span class="val">${DISHES.filter(d=>d.cat===c.id).length}</span></div>`).join('')}
     </div>
-    <div class="a-panel"><<h2>Модификаторы</h2>
+    <div class="a-panel"><h2>Модификаторы</h2>
       <div class="sum-row"><span>Дополнительное авокадо</span><span class="val">+150 ₽</span></div>
       <div class="sum-row"><span>Острый соус чили</span><span class="val">+50 ₽</span></div>
       <div class="sum-row"><span>Фирменный соус</span><span class="val">0 ₽</span></div>
     </div>
-    <div class="a-panel"><<h2>Стоп-лист</h2>
+    <div class="a-panel"><h2>Стоп-лист</h2>
       <p class="muted" style="font-size:13px">Позиции, которых нет на кухне прямо сейчас. Клиенты их не видят, и оповещение уходит в зал.</p>
       <div class="sum-row"><span>Калифорния</span><span class="val">нет в наличии</span></div>
     </div>
@@ -411,7 +414,7 @@ function adminMarketing(){
 
   <div class="a-grid a-grid-split" style="margin-bottom:16px">
     <div class="a-panel">
-      <<h2>Промокоды</h2>
+      <h2>Промокоды</h2>
       <table class="a-table">
         <thead><tr><th scope="col">Код</th><th scope="col">Тип</th><th scope="col">Значение</th><th scope="col">Мин. сумма</th><th scope="col">Использований</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
         <tbody>
@@ -440,7 +443,7 @@ function adminMarketing(){
     </div>
 
     <div class="a-panel">
-      <<h2>Карусель акций на главной</h2>
+      <h2>Карусель акций на главной</h2>
       <div class="muted" style="font-size:12.5px;margin-bottom:12px">
         ${BANNERS.filter(b => b.active).length} из ${BANNERS.length} показываются гостю. Порядок ниже = порядок карточек в ленте, изменения видны сразу.
       </div>
@@ -518,7 +521,7 @@ function adminClients(){
     <div class="a-stat"><div class="lbl">Баллов в обороте</div><div class="val">${fmt(ADMIN_CLIENTS.reduce((s,c)=>s+c.bonus,0))}</div><div class="delta">начислено гостям</div></div>
   </div>
   <div class="a-panel">
-    <<h2>Гости</h2>
+    <h2>Гости</h2>
     <table class="a-table">
       <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Последний</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
@@ -544,7 +547,7 @@ function adminClients(){
 
   ${admin.bonusFor ? `
   <div class="a-panel" style="margin-top:16px">
-    <<h2>Начисление бонусов: ${admin.bonusFor.name}</h2>
+    <h2>Начисление бонусов: ${admin.bonusFor.name}</h2>
     <div class="a-grid a-grid-2" style="gap:10px;align-items:end">
       <input class="input-plain" id="bonusAmount" type="number" min="1" inputmode="numeric" aria-label="Сколько баллов начислить" data-act="admin-bonus-amount" value="${admin.bonusAmount}">
       <div class="a-row">
@@ -556,7 +559,7 @@ function adminClients(){
   </div>` : ''}
 
   <div class="a-panel" style="margin-top:16px">
-    <<h2>Импорт гостей из старой CRM</h2>
+    <h2>Импорт гостей из старой CRM</h2>
     <p class="muted" style="font-size:13px">Выгрузите гостей из Foodpicasso в CSV и загрузите сюда — гости переедут в базу вместе с историей заказов и бонусами. Телефон сверяется: гостя с таким же номером второй раз не добавляем, а обновляем его историю.</p>
     <p class="muted" style="font-size:12.5px;margin-top:6px">Формат строки: <code>Имя;Телефон;Заказы;Сумма;Бонусы;Сегмент</code> — разделитель «;» или «,», первая строка может быть заголовком.</p>
     <div class="a-row" style="margin-top:12px">
@@ -613,7 +616,7 @@ function adminAnalytics(){
 
   <div class="a-grid a-grid-split" style="margin-bottom:16px">
     <div class="a-panel">
-      <<h2>Заказы по дням недели</h2>
+      <h2>Заказы по дням недели</h2>
       <div style="display:flex;align-items:flex-end;gap:12px;height:170px;padding-top:10px">
         ${bars.map(b => `
           <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end">
@@ -624,7 +627,7 @@ function adminAnalytics(){
       </div>
     </div>
     <div class="a-panel">
-      <<h2>Популярные блюда</h2>
+      <h2>Популярные блюда</h2>
       ${top.map((d,i) => `
         <div style="margin-bottom:12px">
           <div class="row between" style="font-size:13.5px;margin-bottom:6px"><span>${i+1}. ${d.name}</span><span class="muted">${[214,187,143,121,96][i]} шт.</span></div>
@@ -635,7 +638,7 @@ function adminAnalytics(){
 
   <div class="a-panel" style="margin-top:16px">
     <div class="row between">
-      <<h2>Отчёт за неделю</h2>
+      <h2>Отчёт за неделю</h2>
       <div class="a-row">
         <button class="a-btn" data-act="admin-toast" data-msg="Отчёт выгружен в CSV">Выгрузить CSV</button>
         <button class="a-btn" data-act="admin-toast" data-msg="Отчёт выгружен в Excel">Выгрузить Excel</button>
@@ -660,7 +663,7 @@ function adminSettings(){
   return `
   <div class="a-grid a-grid-2">
     <div class="a-panel">
-      <<h2>Доставка и заказы</h2>
+      <h2>Доставка и заказы</h2>
       <div class="field"><label for="set-deliveryPrice">Стоимость доставки, ₽</label><input class="input-plain" id="set-deliveryPrice" inputmode="numeric" data-act="admin-setting" data-key="deliveryPrice" value="${s.deliveryPrice}"></div>
       <div class="field"><label for="set-freeFrom">Бесплатная доставка от, ₽</label><input class="input-plain" id="set-freeFrom" inputmode="numeric" data-act="admin-setting" data-key="freeFrom" value="${s.freeFrom}"></div>
       <div class="field"><label for="set-minOrder">Минимальная сумма заказа, ₽</label><input class="input-plain" id="set-minOrder" inputmode="numeric" data-act="admin-setting" data-key="minOrder" value="${s.minOrder}"></div>
@@ -676,7 +679,7 @@ function adminSettings(){
 
     <div>
       <div class="a-panel" style="margin-bottom:16px">
-        <<h2>Точки ресторана</h2>
+        <h2>Точки ресторана</h2>
         ${LOCATIONS.map(l => `
           <div class="sum-row" style="align-items:flex-start">
             <div>
@@ -687,7 +690,7 @@ function adminSettings(){
           </div>`).join('')}
       </div>
       <div class="a-panel">
-        <<h2>Роли сотрудников</h2>
+        <h2>Роли сотрудников</h2>
         <table class="a-table">
           <tbody>
             <tr><td>Администратор</td><td class="muted">меню, заказы, отчёты, сотрудники</td></tr>
@@ -718,7 +721,7 @@ function adminQr(){
   return `
   <div class="a-grid a-grid-2">
     <div class="a-panel">
-      <<h2>Параметры листов</h2>
+      <h2>Параметры листов</h2>
       <div class="field">
         <label for="qr-locId">Точка ресторана</label>
         <select class="input-plain" id="qr-locId" data-act="admin-qr-field" data-key="locId">
@@ -749,7 +752,7 @@ function adminQr(){
     </div>
 
     <div class="a-panel">
-      <<h2>Предпросмотр · стол ${tables[0]}</h2>
+      <h2>Предпросмотр · стол ${tables[0]}</h2>
       <div class="qr-tile">${QR.svg(url, { ec:q.ec, px:5, margin:3, dark:'#080B08', light:'#FFFFFF' })}</div>
       <div class="muted small" style="margin-top:10px">
         Версия ${m.version} · ${m.size}×${m.size} модулей · уровень ${m.ec} · маска ${m.mask}
@@ -763,7 +766,7 @@ function adminQr(){
 
   <div class="a-panel" style="margin-top:16px">
     <div class="a-row between" style="margin-bottom:10px">
-      <<h2>Столы точки «${loc.name}»</h2>
+      <h2>Столы точки «${loc.name}»</h2>
       <button class="a-btn" data-act="admin-qr-print" data-loc="${loc.id}" data-count="${tables.length}">${icon('printer')} Печать всех листов</button>
     </div>
     <table class="a-table">
@@ -921,6 +924,14 @@ document.addEventListener('click', ev => {
   if (act === 'admin-dish-cancel'){
     admin.dishDraft = emptyDishDraft();
     renderAdmin();
+  }
+  if (act === 'admin-dish-new'){
+    admin.dishDraft = emptyDishDraft();
+    renderAdmin();
+    const form = document.getElementById('dishForm');
+    if (form) form.scrollIntoView({ block:'start', behavior:'smooth' });
+    const nameEl = document.getElementById('dish-name');
+    if (nameEl) nameEl.focus({ preventScroll:true });
   }
   if (act === 'admin-dish-save'){
     const dr = readDraftFields('dishForm', 'admin-dish-draft', admin.dishDraft);

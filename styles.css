@@ -663,7 +663,7 @@ body[data-mode="admin"] .tb-size{display:none;}
 /* контейнер, а не окно: админка подстраивается под свою ширину — и на телефоне, и в узком окне десктопа */
 .admin-stage{max-width:1440px;margin:0 auto;container-type:inline-size;container-name:admin;}
 .admin-frame{
-  border-radius:18px;overflow:hidden;border:1px solid var(--line-soft);
+  border-radius:18px;overflow:hidden;overflow:clip;border:1px solid var(--line-soft);
   background:var(--panel);box-shadow:0 30px 80px rgba(0,0,0,.5);
 }
 .admin-browser{display:flex;align-items:center;gap:7px;padding:11px 16px;background:#161B15;border-bottom:1px solid var(--line-soft);}
@@ -694,7 +694,13 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .admin-top h1{font-size:19px;font-weight:700;}
 .admin-top .sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
-.admin-body{padding:22px 24px 40px;overflow-x:auto;}
+/* без overflow-x:auto: иначе .admin-body становится скролл-контейнером
+   и липкая кнопка сохранения не может прижаться к низу окна.
+   Широкие таблицы прокручиваются внутри своих .a-panel. */
+.admin-body{padding:22px 24px 40px;}
+/* форме блюда горизонтальная прокрутка не нужна, а без неё кнопка
+   сохранения липнет к низу окна, пока владелец заполняет поля */
+#dishForm{overflow:visible;}
 
 .a-grid{display:grid;gap:14px;}
 .a-grid-4{grid-template-columns:repeat(4,minmax(0,1fr));}
@@ -737,6 +743,11 @@ body[data-mode="admin"] .tb-size{display:none;}
 .row-star{display:inline-flex;align-items:center;gap:8px;}
 .row-star .ic{width:16px;height:16px;color:var(--lime);}
 .a-row{display:flex;gap:8px;flex-wrap:wrap;}
+/* кнопка сохранения блюда остаётся под рукой, пока форма заполняется */
+.dish-form-actions{
+  position:sticky;bottom:0;z-index:3;margin-top:12px;padding:10px 0 2px;
+  background:linear-gradient(180deg,rgba(21,27,20,0),var(--surface) 46%);
+}
 
 .a-tabs{display:flex;gap:8px;margin-bottom:18px;}
 .a-tabs button{
