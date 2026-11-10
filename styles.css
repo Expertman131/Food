@@ -790,7 +790,6 @@ body[data-mode="admin"] .tb-size{display:none;}
 /* таблица не сжимается в нечитаемые колонки: если панель уже —
    крутится таблица внутри панели, а не страница целиком */
 .a-table{width:100%;border-collapse:collapse;font-size:var(--fs-13);min-width:640px;}
-.a-table-dishes{min-width:780px;}
 .a-table-clients{min-width:820px;}
 .a-table .nw{white-space:nowrap;}
 .a-table th{
@@ -799,7 +798,7 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .a-table td{padding:var(--sp-12) var(--sp-10);border-bottom:1px solid var(--line-soft);vertical-align:middle;}
 .a-table tr:last-child td{border-bottom:0;}
-.a-table .thumb{width:42px;height:42px;border-radius:10px;object-fit:cover;}
+.a-table .thumb, .thumb{width:42px;height:42px;border-radius:10px;object-fit:cover;}
 
 /* широкие таблицы на телефоне заменяем карточками */
 .a-cards{display:none;gap:var(--sp-10);grid-template-columns:repeat(2,minmax(0,1fr));}
@@ -900,9 +899,31 @@ body[data-mode="admin"] .tb-size{display:none;}
 .a-row{display:flex;gap:var(--sp-8);flex-wrap:wrap;}
 /* в таблице кнопки действий держатся в одну строку: перенос в столбик делал строку втрое выше картинки */
 .a-table .a-row{flex-wrap:nowrap;}
-/* одинаковая ширина кнопки стоп-листа: иначе таблица прыгает при переключении статуса */
-.a-table-dishes .a-btn-stop{min-width:132px;}
-.a-table-dishes .a-pill{min-width:78px;justify-content:center;}
+
+/* Список блюд: одна конструкция на все ширины — без таблица/карточки и без
+   горизонтальной прокрутки. В строке только главное, остальное раскрывает
+   кнопка «Детали» под строкой; узкая панель переносит блоки на вторую строку */
+.a-dish-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-12);flex-wrap:wrap;margin-bottom:var(--sp-10);}
+.a-dish-tools{display:flex;gap:var(--sp-8);flex-wrap:wrap;align-items:center;flex:1 1 320px;justify-content:flex-end;}
+.a-dish-tools .input-plain{width:auto;min-width:0;flex:0 1 240px;}
+.a-dish-tools select.input-plain{flex:0 1 auto;}
+.a-dishlist{border:1px solid var(--line-soft);border-radius:14px;overflow:hidden;}
+.a-dish{display:flex;align-items:center;gap:var(--sp-10);flex-wrap:wrap;padding:var(--sp-12) var(--sp-14);border-bottom:1px solid var(--line-soft);}
+.a-dishlist > :last-child{border-bottom:0;}
+.a-dish.is-stopped{opacity:.62;}
+.a-dish.is-stopped .a-dish-name b{text-decoration:line-through;text-decoration-color:rgba(242,133,107,.6);}
+.a-dish-main{display:flex;align-items:center;gap:var(--sp-10);flex:1 1 220px;min-width:0;}
+.a-dish-name{min-width:0;display:flex;flex-direction:column;gap:var(--sp-2);}
+.a-dish-name b{overflow-wrap:anywhere;}
+.a-dish-price{display:flex;flex-direction:column;line-height:1.3;flex:none;}
+.a-dish-actions{display:flex;gap:var(--sp-6);flex:none;}
+.a-dish-details{padding:var(--sp-12) var(--sp-14);border-bottom:1px solid var(--line-soft);background:var(--surface-2);}
+.a-dish-tags{display:flex;flex-wrap:wrap;gap:var(--sp-6);}
+/* нейтральные пилюли иначе сливались с фоном панели деталей */
+.a-dish-details .a-pill{background:var(--surface);}
+.a-dish-note{margin:var(--sp-8) 0 0;font-size:var(--fs-12);line-height:1.5;}
+.a-dish-note b{color:var(--text);font-weight:600;}
+.a-dish-empty{padding:var(--sp-18) var(--sp-14);text-align:center;font-size:var(--fs-13);}
 /* кнопка сохранения блюда остаётся под рукой, пока форма заполняется */
 .dish-form-actions{
   position:sticky;bottom:0;z-index:3;margin-top:var(--sp-12);padding:var(--sp-10) 0 var(--sp-2);
@@ -1234,10 +1255,11 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 }
 
 /* Таблицы админки шире панели уже на 1140 px: колонка действий
-   («Стоп-лист», «Правка») уезжала за горизонтальную прокрутку и
-   терялась. Ниже этого порога показываем карточки — все кнопки видны сразу */
+   уезжала за горизонтальную прокрутку и терялась. Ниже этого порога
+   показываем карточки. Список блюд этому не подвержен: он сворачивает
+   детали под кнопку «Детали» на любой ширине */
 @container admin (max-width:1140px){
-  .a-table-dishes,.a-table-clients,.a-table-promos,.a-table-qr,.a-table-report,.a-table-import,.a-table-menu-import{display:none;}
+  .a-table-clients,.a-table-promos,.a-table-qr,.a-table-report,.a-table-import,.a-table-menu-import{display:none;}
   .a-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 

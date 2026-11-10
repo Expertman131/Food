@@ -28,6 +28,9 @@ const admin = {
   },
   locationDraft: { id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' },
   staffDraft: { name:'', phone:'', role:'operator' },
+  dishQuery: '',
+  dishSort: 'name',
+  dishOpen: [],
   clientImport: { text:'', rows:null, errors:null, skipped:0 },
   menuImport: { text:'', rows:null, errors:null },
   pushDraft: { audience:'all', title:'', text:'', promo:'', when:'now', scheduleAt:'' },
@@ -427,6 +430,74 @@ function adminOrders(){
 
 /* --------------------------------- меню --------------------------------- */
 
+/* Список блюд — одна конструкция на все ширины: в строке только главное
+   (фото, название, цена, статус, «на главной», «Детали», действия), остальное
+   раскрывается кнопкой «Детали» под строкой. Горизонтальной прокрутки нет. */
+function visibleDishes(){
+  const q = (admin.dishQuery || '').trim().toLowerCase();
+  const hit = d => {
+    if (!q) return true;
+    const cat = CATEGORIES.find(c => c.id === d.cat);
+    return d.name.toLowerCase().includes(q)
+      || (d.badge || '').toLowerCase().includes(q)
+      || (cat && cat.name.toLowerCase().includes(q));
+  };
+  const list = DISHES.filter(hit);
+  const sorters = {
+    'name':       (a, b) => a.name.localeCompare(b.name, 'ru'),
+    'cat':        (a, b) => CATEGORIES.findIndex(c => c.id === a.cat) - CATEGORIES.findIndex(c => c.id === b.cat) || a.name.localeCompare(b.name, 'ru'),
+    'price-asc':  (a, b) => dishPrice(a) - dishPrice(b),
+    'price-desc': (a, b) => dishPrice(b) - dishPrice(a)
+  };
+  return list.sort(sorters[admin.dishSort] || sorters.name);
+}
+
+function dishRowHtml(d){
+  const open = admin.dishOpen.includes(d.id);
+  const cat = CATEGORIES.find(c => c.id === d.cat);
+  return `
+  <div class="a-dish ${dishAvailable(d) ? '' : 'is-stopped'}">
+    <div class="a-dish-main">
+      <img class="thumb" src="${d.img}" alt="">
+      <div class="a-dish-name"><b>${esc(d.name)}</b>${d.badge ? `<span class="muted" style="font-size:var(--fs-11)">${esc(d.badge)}</span>` : ''}</div>
+    </div>
+    <div class="a-dish-price"><b>${fmt(dishPrice(d))}</b>${d.salePercent ? `<span class="muted" style="font-size:var(--fs-11)"><s>${fmt(d.price)}</s> · −${d.salePercent}%</span>` : ''}</div>
+    <span class="a-pill ${dishAvailable(d) ? 'lime' : 'red'}">${dishAvailable(d) ? 'Активно' : 'Стоп-лист'}</span>
+    <button class="a-btn star ${d.popular ? 'is-on' : ''}" aria-pressed="${d.popular ? 'true' : 'false'}"
+      aria-label="${d.popular ? 'Убрать «' + d.name + '» с главной' : 'Показать «' + d.name + '» на главной'}"
+      data-act="admin-featured" data-id="${d.id}">${icon('star')}</button>
+    <button class="a-btn" data-act="admin-dish-details" data-id="${d.id}" aria-expanded="${open ? 'true' : 'false'}">Детали ${open ? '▴' : '▾'}</button>
+    <div class="a-dish-actions">
+      <button class="a-btn" aria-label="Редактировать «${d.name}»" data-act="admin-dish-edit" data-id="${d.id}">${icon('edit')}</button>
+      <button class="a-btn a-btn-stop ${dishAvailable(d) ? '' : 'primary'}" data-act="admin-stoplist" data-id="${d.id}">${dishAvailable(d) ? 'Стоп-лист' : 'Вернуть в меню'}</button>
+    </div>
+  </div>
+  ${open ? `
+  <div class="a-dish-details" data-details-for="${d.id}">
+    <div class="a-dish-tags">
+      <span class="a-pill">${esc(cat.name)}</span>
+      ${d.unit ? `<span class="a-pill">${esc(d.unit)}</span>` : ''}
+      ${d.salePercent ? `<span class="a-pill warn">Скидка −${d.salePercent}% · было ${fmt(d.price)}</span>` : ''}
+      ${d.popular ? '<span class="a-pill lime">В ленте на главной</span>' : ''}
+      ${(d.modifiers || []).map(m => `<span class="a-pill">+${m.price} ₽ · ${esc(m.name)}</span>`).join('')}
+      ${(d.allergens || []).map(a => `<span class="a-pill red">${esc(a)}</span>`).join('')}
+    </div>
+    ${d.composition ? `<p class="a-dish-note muted"><b>Состав:</b> ${esc(d.composition)}</p>` : ''}
+    ${d.desc ? `<p class="a-dish-note muted"><b>Описание:</b> ${esc(d.desc)}</p>` : ''}
+  </div>` : ''}`;
+}
+
+/* перерисовываем только список: поле поиска не пересоздаётся,
+   поэтому фокус и клавиатура не слетают посреди набора */
+function renderDishList(){
+  const box = document.getElementById('dishList');
+  if (!box) return;
+  const list = visibleDishes();
+  box.innerHTML = list.length
+    ? list.map(dishRowHtml).join('')
+    : `<div class="a-dish-empty muted">По запросу «${esc(admin.dishQuery.trim())}» ничего не нашлось. Проверьте написание или очистите поиск.</div>`;
+}
+
 function adminMenu(){
   const cats = CATEGORIES.filter(c => c.id !== 'all');
   const list = DISHES;
@@ -529,56 +600,23 @@ function adminMenu(){
   </div>
 
   <div class="a-panel">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--sp-12);flex-wrap:wrap;margin-bottom:var(--sp-14)">
+    <div class="a-dish-head">
       <h2 style="margin-bottom:0">Блюда и цены</h2>
-      <button class="a-btn primary" data-act="admin-dish-new">+ Добавить блюдо</button>
+      <div class="a-dish-tools">
+        <input class="input-plain" id="dishSearch" type="search" data-act="admin-dish-search"
+          placeholder="Название, метка или категория" aria-label="Поиск блюда в меню" value="${esc(admin.dishQuery)}">
+        <select class="input-plain" id="dishSort" data-act="admin-dish-sort" aria-label="Сортировка списка блюд">
+          <option value="name" ${admin.dishSort === 'name' ? 'selected' : ''}>По имени</option>
+          <option value="cat" ${admin.dishSort === 'cat' ? 'selected' : ''}>По категории</option>
+          <option value="price-asc" ${admin.dishSort === 'price-asc' ? 'selected' : ''}>Сначала недорогие</option>
+          <option value="price-desc" ${admin.dishSort === 'price-desc' ? 'selected' : ''}>Сначала дорогие</option>
+        </select>
+        <button class="a-btn primary" data-act="admin-dish-new">+ Добавить блюдо</button>
+      </div>
     </div>
-    <table class="a-table a-table-dishes">
-      <thead><tr><th scope="col"><span class="sr-only">Фото</span></th><th scope="col">Название</th><th scope="col">Категория</th><th scope="col">Вес</th><th scope="col">Цена</th><th scope="col">На главной</th><th scope="col">Статус</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
-      <tbody>
-        ${list.map(d => `
-          <tr class="${dishAvailable(d)?'':'is-stopped'}">
-            <td><img class="thumb" src="${d.img}" alt=""></td>
-            <td><b>${d.name}</b>${d.badge?`<div class="muted" style="font-size:var(--fs-11);margin-top:var(--sp-2)">${esc(d.badge)}</div>`:''}</td>
-            <td class="muted nw">${CATEGORIES.find(c=>c.id===d.cat).name}</td>
-            <td class="muted nw">${d.unit}</td>
-            <td class="nw"><b>${fmt(dishPrice(d))}</b>${d.salePercent?`<div class="muted" style="font-size:var(--fs-11)"><s>${fmt(d.price)}</s> · −${d.salePercent}%</div>`:''}</td>
-            <td class="nw">
-              <button class="a-btn star ${d.popular?'is-on':''}" aria-pressed="${d.popular?'true':'false'}"
-                aria-label="${d.popular?'Убрать «'+d.name+'» с главной':'Показать «'+d.name+'» на главной'}"
-                data-act="admin-featured" data-id="${d.id}">${icon('star')}</button>
-            </td>
-            <td class="nw"><span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span></td>
-            <td class="nw">
-              <div class="a-row">
-                <button class="a-btn" aria-label="Редактировать «${d.name}»" data-act="admin-dish-edit" data-id="${d.id}">${icon('edit')}</button>
-                <button class="a-btn a-btn-stop ${dishAvailable(d)?'':'primary'}" data-act="admin-stoplist" data-id="${d.id}">${dishAvailable(d) ? 'Стоп-лист' : 'Вернуть в меню'}</button>
-              </div>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-
-    <div class="a-cards">
-      ${list.map(d => `
-        <article class="a-card ${dishAvailable(d)?'':'is-stopped'}">
-          <img class="a-card-thumb" src="${d.img}" alt="">
-          <div class="a-card-body">
-            <div class="a-card-title"><b>${d.name}</b>${d.badge?`<span class="muted">${esc(d.badge)}</span>`:''}</div>
-            <div class="muted" style="font-size:var(--fs-12)">${CATEGORIES.find(c=>c.id===d.cat).name} · ${d.unit}</div>
-            <div class="a-card-row">
-              <b>${fmt(dishPrice(d))}</b>${d.salePercent?`<span class="muted"><s>${fmt(d.price)}</s> · −${d.salePercent}%</span>`:''}
-              <span class="a-pill ${dishAvailable(d)?'lime':'red'}">${dishAvailable(d)?'Активно':'Стоп-лист'}</span>
-            </div>
-            <div class="a-row">
-              <button class="a-btn star ${d.popular?'is-on':''}" aria-pressed="${d.popular?'true':'false'}"
-                aria-label="${d.popular?'Убрать «'+d.name+'» с главной':'Показать «'+d.name+'» на главной'}"
-                data-act="admin-featured" data-id="${d.id}">${icon('star')}</button>
-              <button class="a-btn" aria-label="Редактировать «${d.name}»" data-act="admin-dish-edit" data-id="${d.id}">${icon('edit')}</button>
-              <button class="a-btn a-btn-stop ${dishAvailable(d)?'':'primary'}" data-act="admin-stoplist" data-id="${d.id}">${dishAvailable(d) ? 'Стоп-лист' : 'Вернуть в меню'}</button>
-            </div>
-          </div>
-        </article>`).join('')}
+    <p class="a-form-note" style="margin-top:var(--sp-8)">В строке — только главное: фото, название, цена, статус и действия. Категорию, вес, скидку, состав, аллергены и доплаты показывает кнопка «Детали».</p>
+    <div class="a-dishlist" id="dishList">
+      ${visibleDishes().map(dishRowHtml).join('')}
     </div>
   </div>
 
@@ -1338,6 +1376,16 @@ document.addEventListener('click', ev => {
     render();
     toast(d.available ? d.name + ' — снова в меню' : d.name + ' — стоп-лист, гости не видят блюдо');
   }
+  if (act === 'admin-dish-details'){
+    const id = el.dataset.id;
+    const i = admin.dishOpen.indexOf(id);
+    if (i >= 0) admin.dishOpen.splice(i, 1); else admin.dishOpen.push(id);
+    renderAdmin();
+    if (i < 0){
+      const det = document.querySelector('[data-details-for="' + id + '"]');
+      if (det) det.scrollIntoView({ block:'nearest', behavior:'smooth' });
+    }
+  }
   if (act === 'admin-dish-badge'){
     admin.dishDraft.badge = el.dataset.badge || '';
     const input = document.getElementById('dish-badge');
@@ -1777,6 +1825,7 @@ document.addEventListener('input', ev => {
   if (el.dataset.act === 'admin-location-draft'){ admin.locationDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-staff-draft'){ admin.staffDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-bonus-amount'){ admin.bonusAmount = el.value; }
+  if (el.dataset.act === 'admin-dish-search'){ admin.dishQuery = el.value; renderDishList(); }
   if (el.dataset.act === 'admin-import-text'){
     admin.clientImport.text = el.value;
     admin.clientImport.rows = null;
@@ -1819,6 +1868,11 @@ document.addEventListener('input', ev => {
 document.addEventListener('change', ev => {
   const el = ev.target;
   if (!el.dataset) return;
+  if (el.dataset.act === 'admin-dish-sort'){
+    admin.dishSort = el.value;
+    renderDishList();
+    return;
+  }
   if (el.dataset.act === 'admin-setting' && ['bonusPercent','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)){
     const key = el.dataset.key;
     const max = key === 'bonusPercent' ? 50 : (key === 'bonusMaxPay' ? 100 : 60);
