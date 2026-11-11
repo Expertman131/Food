@@ -376,20 +376,199 @@ const nextOrderNo = () => {
   return String(last + 1);
 };
 
-function seedOrders(){
-  /* Демо-заказ: сегодня, 40 минут назад — чтобы работали фильтр по периоду
-     и поиск по телефону, а не только заголовок карточки. */
-  const ts = Date.now() - 40*60*1000;
-  state.orders = [
-    { id:'o-seed', no:'2401', ts, date: dateRu(ts),
-      items:[{ dishId:'d-phil', name:'Филадельфия', qty:1, price:590, mods:[] }],
-      sub:590, delivery:199, discount:0, bonus:0, total:789,
-      status:'new', deliveryType:'delivery', locationId:'l1', addressId:'a1', slot:null,
-      address:'Ташкентская 198', comment:'', payment:'card', promo:null, source:'app',
-      customer:'Сергей', phone:'+7 900 000-00-01' }
-  ];
-  state.currentOrderId = 'o-seed';
+/* -------------------------------- демо-история --------------------------------
+
+   Чтобы отчёт в админке показывал настоящие числа, а не выдуманные,
+   при старте посеивается история заказов за четыре недели. Считается
+   детерминированно: демо должно выглядеть одинаково при каждом открытии,
+   поэтому «случайность» берётся от фиксированного зерна, а не от времени. */
+
+const SEED_DAYS = 28;          // глубина истории, дней
+const SEED_TABLE_ORDERS = 18;  // заказы из QR-меню в зале (без телефона гостя)
+
+function seededRandom(seed){
+  let s = seed >>> 0;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
 }
+
+const SEED_ADDRESSES = [
+  'Москва, ул. Ташкентская, 19, кв. 42',
+  'Москва, Пресненская наб., 8, стр. 1',
+  'Москва, ул. Мичурина, 32, кв. 8',
+  'Москва, ул. Ташкентская, 17, кв. 91',
+  'Москва, Патриаршие пруды, 7',
+  'Москва, ул. Остоженка, 14'
+];
+
+const SEED_COMMENTS = [
+  'Без лука, пожалуйста', 'Позвонить за 10 минут', 'Острый соус в отдельной чашке',
+  'Два палочек не нужно', 'Побыстрее, если получится'
+];
+
+/* Момент заказа: «daysAgo» дней назад, в часы работы ресторана. */
+function seedTs(daysAgo, rnd){
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  if (daysAgo === 0){
+    /* сегодняшние заказы — в пределах последних шести часов */
+    return Date.now() - (35 + Math.floor(rnd() * 330)) * 60000;
+  }
+  d.setHours(11 + Math.floor(rnd() * 12), Math.floor(rnd() * 4) * 15, 0, 0);
+  return d.getTime();
+}
+
+function seedItems(rnd){
+  const count = 1 + Math.floor(rnd() * 3);
+  const items = [];
+  const used = new Set();
+  for (let i = 0; i < count; i++){
+    const dish = DISHES[Math.floor(rnd() * DISHES.length)];
+    if (used.has(dish.id)) continue;
+    used.add(dish.id);
+    items.push({ dishId:dish.id, name:dish.name, qty: rnd() > 0.85 ? 2 : 1, price:dishPrice(dish), mods:[] });
+  }
+  if (!items.length) items.push({ dishId:DISHES[0].id, name:DISHES[0].name, qty:1, price:dishPrice(DISHES[0]), mods:[] });
+  return items;
+}
+
+/* Один заказ истории: блюда, доставка, промокод и сумма считаются по тем же
+   правилам, что и живой заказ гостя. */
+function buildSeedOrder(o){
+  const { ts, rnd, customer, phone } = o;
+  const items = seedItems(rnd);
+  const sub = items.reduce((s,i) => s + i.price * i.qty, 0);
+  const roll = rnd();
+  const deliveryType = roll < 0.68 ? 'delivery' : (roll < 0.94 ? 'pickup' : 'table');
+  const locationId = deliveryType === 'pickup' && rnd() > 0.55 ? 'l3' : (rnd() > 0.7 ? 'l2' : 'l1');
+  let delivery = deliveryType === 'delivery' ? (sub >= RULES.freeDeliveryFrom ? 0 : RULES.deliveryPrice) : 0;
+  let discount = 0;
+  let promo = null;
+  if (deliveryType === 'delivery'){
+    const p = rnd();
+    if (p < 0.09){ promo = 'WASABI10'; discount = Math.round(sub * 0.10); }
+    else if (p < 0.15 && sub >= 1000){ promo = 'SETHI'; discount = 200; }
+    else if (p < 0.19){ promo = 'DOSTAVKA'; delivery = 0; }
+  }
+  const total = Math.max(0, sub - discount + delivery);
+  return {
+    ts, date: dateRu(ts),
+    items, sub, delivery, discount, bonus:0, total,
+    status:'done', deliveryType, locationId, addressId:'a1', slot:null,
+    address: deliveryType === 'table' ? '' : SEED_ADDRESSES[Math.floor(rnd() * SEED_ADDRESSES.length)],
+    comment: rnd() > 0.85 ? SEED_COMMENTS[Math.floor(rnd() * SEED_COMMENTS.length)] : '',
+    payment: deliveryType === 'table' ? 'table' : (rnd() > 0.5 ? 'card' : (rnd() > 0.35 ? 'sbp' : 'cash')),
+    promo, source: deliveryType === 'table' ? 'qr' : 'app',
+    customer, phone,
+    bonusEarn: deliveryType === 'table' ? 0 : Math.floor(Math.max(0, sub - discount) * RULES.bonusAccrual / 100)
+  };
+}
+
+/* Заказы к столу из QR-меню: гостя в базе нет, телефон пустой. */
+function buildSeedTableOrder(ts, rnd, tableNo){
+  const items = seedItems(rnd);
+  const sub = items.reduce((s,i) => s + i.price * i.qty, 0);
+  const locId = 'l' + (1 + Math.floor(rnd() * 3));
+  const loc = LOCATIONS.find(l => l.id === locId) || LOCATIONS[0];
+  return {
+    ts, date: dateRu(ts),
+    items, sub, delivery:0, discount:0, bonus:0, total:sub,
+    status:'done', deliveryType:'table', locationId:locId, addressId:null, slot:null,
+    address:`Стол ${tableNo} · ${loc.name}`, tableNo,
+    comment:'', payment:'table', promo:null, source:'qr',
+    customer:`Гость стола ${tableNo}`, phone:'',
+    bonusEarn:0
+  };
+}
+
+function seedOrders(){
+  const rnd = seededRandom(20261111);
+  const orders = [];
+  let no = ORDER_NO_START;
+
+  const add = order => {
+    no += 1;
+    order.no = String(no);
+    order.id = 'o-seed-' + no;
+    orders.push(order);
+    return order;
+  };
+
+  /* 1. Живой заказ гостя: сегодня, 40 минут назад, статус «Новый» —
+        чтобы вкладки админки и фильтр по периоду работали сразу. */
+  const liveTs = Date.now() - 40 * 60 * 1000;
+  const live = add({
+    ...buildSeedOrder({ ts:liveTs, rnd, customer:state.user.name, phone:state.user.phone }),
+    items:[{ dishId:'d-phil', name:'Филадельфия', qty:1, price:590, mods:[] }],
+    sub:590, delivery:199, discount:0, bonus:0, total:789,
+    status:'new', deliveryType:'delivery', locationId:'l1', addressId:'a1',
+    address:'Ташкентская 198', comment:'', payment:'card', promo:null, source:'app',
+    customer:state.user.name, phone:state.user.phone, bonusEarn:29
+  });
+
+  /* 2. История гостей базы: у каждого столько заказов, сколько задано планом,
+        последний — в день его последнего заказа. */
+  ADMIN_CLIENTS.forEach(c => {
+    const plan = c.plan;
+    if (!plan) return;
+    const offsets = [];
+    let off = plan.last;
+    while (offsets.length < plan.orders && off <= SEED_DAYS){
+      offsets.push(off);
+      off += plan.gap ? (plan.gap[0] + Math.floor(rnd() * (plan.gap[1] - plan.gap[0] + 1))) : 0;
+    }
+    offsets.forEach(daysAgo => {
+      /* заказ гостя не может быть позже живого заказа из приложения */
+      const ts = Math.min(seedTs(daysAgo, rnd), liveTs - 60000);
+      add(buildSeedOrder({ ts, rnd, customer:c.name, phone:c.phone }));
+    });
+  });
+
+  /* 3. Заказы из QR-меню в зале: без телефона, гостя в базе не создают. */
+  for (let i = 0; i < SEED_TABLE_ORDERS; i++){
+    const daysAgo = Math.floor(rnd() * (SEED_DAYS + 1));
+    const ts = Math.min(seedTs(daysAgo, rnd), liveTs - 60000);
+    add(buildSeedTableOrder(ts, rnd, 1 + Math.floor(rnd() * 12)));
+  }
+
+  /* 4. Статусы: сегодняшние заказы идут по живой цепочке, прошлые — доставлены,
+        изредка — отмена гостя или отказ ресторана. */
+  orders.sort((a,b) => b.ts - a.ts);
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const isToday = ts => ts >= todayStart.getTime();
+  const todayDelivery = orders.filter(o => o.deliveryType !== 'table' && isToday(o.ts));
+  const chain = ['new','cooking','courier','way'];
+  todayDelivery.forEach((o, i) => { o.status = chain[i] || 'done'; });
+  orders.filter(o => o.deliveryType === 'table' && isToday(o.ts)).forEach((o, i) => {
+    o.status = ['cooking','ready','done'][i] || 'done';
+  });
+  orders.forEach(o => {
+    if (isToday(o.ts)) return;
+    const r = rnd();
+    o.status = r < 0.06 ? 'cancelled' : (r < 0.11 ? 'rejected' : 'done');
+    if (o.status === 'rejected') o.rejectReason = REJECT_REASONS[Math.floor(rnd() * REJECT_REASONS.length)];
+  });
+
+  /* 5. Гости базы: заказы, сумма, баллы и даты считаются по этой истории,
+        чтобы цифры гостя и заказа не расходились. */
+  ADMIN_CLIENTS.forEach(c => {
+    const mine = orders.filter(o => o.phone && normPhone(o.phone) === normPhone(c.phone));
+    if (!mine.length) return;
+    const done = mine.filter(o => o.status === 'done');
+    c.orders = mine.length;
+    c.sum = done.reduce((s,o) => s + (Number(o.total) || 0), 0);
+    c.bonus = done.reduce((s,o) => s + (Number(o.bonusEarn) || 0), 0);
+    c.lastDate = isoDay(Math.max(...mine.map(o => o.ts)));
+    c.firstDate = isoDay(Math.min(...mine.map(o => o.ts)));
+    c.history = c.history || [];
+  });
+
+  state.orders = orders;
+  state.currentOrderId = live.id;
+}
+
+/* Заказы гостя: в демо-истории лежат заказы всех гостей, но приложение
+   показывает только свои. */
+const myOrders = () => state.orders.filter(o => normPhone(o.phone) === normPhone(state.user.phone));
 
 /* -------------------------------- роутер -------------------------------- */
 
@@ -555,7 +734,7 @@ function promoRail(){
 function scrHome(){
   const set = dishById('d-set-w');
   const popular = DISHES.filter(d => d.popular && dishAvailable(d));
-  const last = state.orders[0];
+  const last = myOrders()[0];
   return `
   ${appHeader()}
   <section class="section" style="padding-bottom:0;margin-bottom:var(--sp-14)">
@@ -1244,7 +1423,7 @@ function scrStatusRejected(order){
 }
 
 function scrOrders(){
-  const orders = state.orders;
+  const orders = myOrders();
   return `
   ${appHeader()}
   <section class="section" style="padding-top:var(--sp-4)">
@@ -1326,7 +1505,7 @@ function scrProfile(){
       <div class="row between">
         <div>
           <h2 class="h2">История заказов</h2>
-          <p class="muted small" style="margin-top:var(--sp-4)">${state.orders.length} в истории (до 200 последних) · Cloud</p>
+          <p class="muted small" style="margin-top:var(--sp-4)">${myOrders().length} в истории (до 200 последних) · Cloud</p>
         </div>
         <span style="color:var(--lime)">${icon('receipt')}</span>
       </div>
@@ -1700,9 +1879,9 @@ const FEATURE_GROUPS = [
     'Выгрузка заказов в CSV: ровно те строки, что видны на экране',
     'Клиенты: автоматически из заказов, импорт из CRM, источники, бонусы и удаление',
     'QR-меню: ссылки на столы, PNG для печати, листы A4',
-    'Аналитика: выручка, средний чек, доставка против самовывоза, выгрузка CSV и Excel',
+    'Аналитика: период, выручка, средний чек, доставка против самовывоза — считается по истории заказов; выгрузка CSV и Excel',
     'Настройки: доставка, добавление и правка точек, сотрудники и роли (демо)',
-    'Мобильный вид: в меню подробности прячутся под «Детали», широкие таблицы — карточки, кнопки — под палец'
+    'Мобильный вид: подробности прячутся под «Детали», кнопки — под палец, ничего не уезжает за край'
   ]}
 ];
 
@@ -1716,7 +1895,7 @@ function renderInspector(){
   $('#inspState').innerHTML = `
     <dt>Позиций в корзине</dt><dd>${cartCount()}</dd>
     <dt>Сумма корзины</dt><dd>${fmt(t.total)}</dd>
-    <dt>Заказов</dt><dd>${state.orders.length}</dd>
+    <dt>Заказов</dt><dd>${myOrders().length}</dd>
     <dt>Промокод</dt><dd>${state.promo || '—'}</dd>
     <dt>Экран</dt><dd>${SCREENS[state.screen].title}</dd>
     <dt>Размер рамки</dt><dd id="sizeReadout">—</dd>`;
@@ -2017,8 +2196,8 @@ const ACTIONS = {
     state.currentOrderId = el.dataset.id;
     go('status');
   },
-  'repeat-order': (el) => repeatOrder(state.orders.find(x => x.id === el.dataset.id)),
-  'repeat-last': () => repeatOrder(state.orders[0]),
+  'repeat-order': (el) => repeatOrder(myOrders().find(x => x.id === el.dataset.id)),
+  'repeat-last': () => repeatOrder(myOrders()[0]),
   'cancel-order': (el) => {
     const o = state.orders.find(x => x.id === el.dataset.id);
     if (!o) return;
@@ -2090,7 +2269,6 @@ const ACTIONS = {
     state.deliveryType = 'delivery';
     state.payMethod = 'card';
     seedOrders();
-    state.currentOrderId = 'o-seed';
     toast('Демо-данные сброшены');
     go('home');
   }

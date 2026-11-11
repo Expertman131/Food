@@ -156,21 +156,41 @@ function formatPhone(digits){
   return '+7 ' + digits.slice(1,4) + ' ' + digits.slice(4,7) + '-' + digits.slice(7,9) + '-' + digits.slice(9,11);
 }
 
-/* Единый демо-счёт гостя: профиль, оплата и база клиентов читают один баланс.
-   Даты demo считаются от сегодняшнего дня, чтобы база не устарела со временем. */
-const dayIso = offset => {
-  const d = new Date();
-  d.setDate(d.getDate() - (Number(offset) || 0));
+/* Дата заказа в виде «ГГГГ-ММ-ДД» — по ней считаются даты гостей
+   и периоды в фильтрах. */
+const isoDay = ts => {
+  const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
+/* Гости демо-базы. Здесь — кто это и как он заказывает (план history).
+   Числа (заказы, сумма, баллы, даты) считаются по посеянной истории заказов
+   в seedOrders() — app.js. Поэтому цифры в панели совпадают со списком заказов,
+   а не выдуманы отдельно друг от друга.
+   plan: orders — сколько заказов, last — сколько дней назад последний,
+   gap — через сколько дней гость заказывает снова.
+   Гости без plan — переехали из CRM: их история в старой системе,
+   а в прототипе они ещё не заказывали. */
 const ADMIN_CLIENTS = [
-  { name:'Сергей',   phone:'+7 900 000-00-01', orders:12, sum:14890, bonus:742, segment:'Постоянный', last:'сегодня',       lastDate:dayIso(0),  firstDate:dayIso(150), history:[] },
-  { name:'Анна',     phone:'+7 916 330-12-04', orders:7,  sum:8240,  bonus:412, segment:'Постоянный', last:'вчера',         lastDate:dayIso(1),  firstDate:dayIso(90),  history:[] },
-  { name:'Дмитрий',  phone:'+7 903 118-77-21', orders:3,  sum:3170,  bonus:158, segment:'Новый',       last:'3 дня назад',  lastDate:dayIso(3),  firstDate:dayIso(60),  history:[] },
-  { name:'Мария',    phone:'+7 985 402-19-55', orders:1,  sum:1690,  bonus:84,  segment:'Новый',       last:'неделя назад', lastDate:dayIso(7),  firstDate:dayIso(14),  history:[] },
-  { name:'Ольга',    phone:'+7 926 640-08-31', orders:19, sum:24310, bonus:1215,segment:'VIP',         last:'2 дня назад',  lastDate:dayIso(2),  firstDate:dayIso(200), history:[] },
-  { name:'Игорь',    phone:'+7 891 003-92-44', orders:2,  sum:1580,  bonus:79,  segment:'Спящий',      last:'3 недели назад',lastDate:dayIso(21),firstDate:dayIso(120), history:[] }
+  { name:'Сергей',   phone:'+7 900 000-00-01', segment:'Постоянный', plan:{ orders:5, last:0, gap:[2,4] } },
+  { name:'Анна',     phone:'+7 916 330-12-04', segment:'Постоянный', plan:{ orders:4, last:1, gap:[3,6] } },
+  { name:'Дмитрий',  phone:'+7 903 118-77-21', segment:'Новый',       plan:{ orders:1, last:3 } },
+  { name:'Мария',    phone:'+7 985 402-19-55', segment:'Новый',       plan:{ orders:1, last:7 } },
+  { name:'Ольга',    phone:'+7 926 640-08-31', segment:'VIP',         plan:{ orders:6, last:2, gap:[1,3] } },
+  { name:'Игорь',    phone:'+7 891 003-92-44', segment:'Спящий',      plan:{ orders:2, last:21, gap:[4,6] } },
+  { name:'Кирилл',   phone:'+7 900 000-00-21', segment:'Постоянный', plan:{ orders:4, last:4, gap:[2,4] } },
+  { name:'Нина',     phone:'+7 900 000-00-22', segment:'Постоянный', plan:{ orders:3, last:5, gap:[3,6] } },
+  { name:'Артём',    phone:'+7 900 000-00-23', segment:'Постоянный', plan:{ orders:3, last:6, gap:[3,5] } },
+  { name:'Вера',     phone:'+7 900 000-00-24', segment:'Новый',       plan:{ orders:1, last:9 } },
+  { name:'Павел',    phone:'+7 900 000-00-25', segment:'Спящий',      plan:{ orders:1, last:24 } },
+  { name:'Юлия',     phone:'+7 900 000-00-26', segment:'VIP',         plan:{ orders:4, last:1, gap:[1,3] } },
+  { name:'Тимур',    phone:'+7 900 000-00-27', segment:'Постоянный', plan:{ orders:3, last:0, gap:[2,5] } },
+  { name:'Ксения',   phone:'+7 900 000-00-28', segment:'Новый',       plan:{ orders:1, last:12 } },
+  { name:'Глеб',     phone:'+7 900 000-00-29', segment:'Постоянный', plan:{ orders:2, last:8, gap:[4,7] } },
+  { name:'Дина',     phone:'+7 900 000-00-30', segment:'Постоянный', plan:{ orders:2, last:13, gap:[4,6] } },
+  { name:'Лев',      phone:'+7 900 000-00-31', segment:'Спящий',      orders:4,  sum:4960,  bonus:248,  lastDate:isoDay(46),  firstDate:isoDay(190), sources:['CRM'] },
+  { name:'Рита',     phone:'+7 900 000-00-32', segment:'Спящий',      orders:2,  sum:2380,  bonus:119,  lastDate:isoDay(63),  firstDate:isoDay(140), sources:['CRM'] },
+  { name:'Эдуард',   phone:'+7 900 000-00-33', segment:'Постоянный', orders:9,  sum:11340, bonus:567,  lastDate:isoDay(18),  firstDate:isoDay(230), sources:['CRM'] }
 ];
 
 const RULES = {

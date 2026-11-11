@@ -34,10 +34,13 @@ const admin = {
     clients: { query:'', segment:[], source:[], sort:'name' },
     menu:    { query:'', cat:[], state:[], popular:[], sort:'name' },
     promos:  { query:'', state:[], type:[], sort:'code' },
-    push:    { audience:[], sort:'' }
+    push:    { audience:[], sort:'' },
+    analytics: { period:'30d' }
   },
   fOpen: { orders:false, clients:false, menu:false, promos:false, push:false },
   dishOpen: [],
+  /* Раскрытые «Детали» в списках разделов: id строк, открытых прямо сейчас */
+  open: { clients:[], promos:[], qr:[], impClients:[], impMenu:[] },
   clientImport: { text:'', rows:null, errors:null, skipped:0 },
   menuImport: { text:'', rows:null, errors:null },
   pushDraft: { audience:'all', title:'', text:'', promo:'', when:'now', scheduleAt:'' },
@@ -147,7 +150,7 @@ function recordClientOrder(order){
   client.sum = (Number(client.sum) || 0) + Math.max(0, Number(order.total) || 0);
   client.last = order.date || nowRu();
   if (order.ts){
-    client.lastDate = new Date(order.ts).toISOString().slice(0,10);
+    client.lastDate = isoDay(order.ts);
     if (!client.firstDate) client.firstDate = client.lastDate;
   }
   if (client.orders > 1 && client.segment === 'Новый') client.segment = 'Постоянный';
@@ -343,8 +346,7 @@ function captureAdminInput(){
   const el = document.activeElement;
   if (!el || !el.closest || !el.closest('#adminBody')) return null;
   if (!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return null;
-  /* поле без id (начисление баллов) узнаём по data-fk: оно рисуется дважды —
-     в таблице и в карточках, восстанавливаем видимый экземпляр */
+  /* поле без id (начисление баллов) узнаём по data-fk */
   if (el.dataset && el.dataset.fk) return { fk: el.dataset.fk, start: el.selectionStart, end: el.selectionEnd };
   if (!el.id) return null;
   return {id: el.id, start: el.selectionStart, end: el.selectionEnd};
@@ -383,7 +385,7 @@ function adminSub(){
     case 'qr':       return 'QR-коды на столы: печать листов и ссылка меню';
     case 'marketing':return 'Промокоды, бонусы, баннеры и push-рассылки';
     case 'clients':  return 'База гостей, сегменты и ручные начисления бонусов';
-    case 'analytics':return 'Выручка, средний чек и популярные блюда за неделю';
+    case 'analytics':return 'Выручка, средний чек и популярные блюда — по истории заказов';
     case 'settings': return 'Доставка, точки ресторана, роли сотрудников';
   }
 }
@@ -439,6 +441,7 @@ function orderRangeValues(o){
   if (ts >= dayStart(0)) out.push('today');
   if (ts >= dayStart(1)) out.push('yesterday');
   if (ts >= dayStart(6)) out.push('7d');
+  if (ts >= dayStart(13)) out.push('14d');
   if (ts >= dayStart(29)) out.push('30d');
   return out;
 }
@@ -539,7 +542,7 @@ const FILTER_DEFS = {
       'bonus-desc': (a,b) => (Number(b.bonus)||0) - (Number(a.bonus)||0),
       'last-desc':  (a,b) => (isoToTime(b.lastDate) || 0) - (isoToTime(a.lastDate) || 0)
     },
-    listHtml: list => clientsListHtml(list),
+    listHtml: list => `<div class="a-itemlist">${clientsListHtml(list)}</div>`,
     groups: [
       { key:'segment', label:'Сегмент', kind:'chips',
         options: (section, items, sel) => {
@@ -619,7 +622,7 @@ const FILTER_DEFS = {
       'uses-desc': (a,b) => promoUses(b.code) - promoUses(a.code),
       'min-desc':  (a,b) => (Number(b.min)||0) - (Number(a.min)||0)
     },
-    listHtml: list => promosListHtml(list),
+    listHtml: list => `<div class="a-itemlist">${promosListHtml(list)}</div>`,
     groups: [
       { key:'state', label:'Состояние', kind:'chips',
         options: () => [
@@ -1047,6 +1050,20 @@ function downloadTextFile(filename, text){
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function downloadBytesFile(filename, bytes, type){
+  const blob = new Blob([bytes], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* Дата в имени файла: 2026-11-11 */
+const fileStamp = () => {
+  const n = new Date();
+  return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
+};
+
 /* --------------------------------- меню --------------------------------- */
 
 /* Список блюд — одна конструкция на все ширины: в строке только главное
@@ -1167,17 +1184,30 @@ function adminMenu(){
       ${admin.menuImport.rows ? `
         <div style="margin-top:var(--sp-14)" id="menuImportPreview">
           <div class="muted" style="font-size:var(--fs-12);margin-bottom:var(--sp-8)">Добавим: ${admin.menuImport.rows.filter(r => !r.duplicate).length}. Обновим по названию: ${admin.menuImport.rows.filter(r => r.duplicate).length}. ${admin.menuImport.errors.length ? `Строк с ошибками: ${admin.menuImport.errors.length} — они не попадут в меню.` : ''}</div>
-          <table class="a-table a-table-menu-import">
-            <thead><tr><th scope="col">Блюдо</th><th scope="col">Категория</th><th scope="col">Цена</th><th scope="col">Скидка</th><th scope="col">На главной</th><th scope="col">Действие</th></tr></thead>
-            <tbody>${admin.menuImport.rows.map(r => `
-              <tr><td><b>${esc(r.name)}</b><div class="muted" style="font-size:var(--fs-11)">${esc(r.unit)}</div></td><td>${esc(CATEGORIES.find(c => c.id===r.cat).name)}</td><td>${fmt(r.price)}</td><td>${r.salePercent ? '−'+r.salePercent+'%' : '—'}</td><td>${r.popular?'Да':'Нет'}${r.warning?`<div class="muted" style="font-size:var(--fs-11)">${esc(r.warning)}</div>`:''}</td><td><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'обновим':'добавим'}</span></td></tr>`).join('')}</tbody>
-          </table>
-          <div class="a-cards">${admin.menuImport.rows.map(r => `
-            <article class="a-card a-card-col"><div class="a-card-body">
-              <div class="a-card-title"><b>${esc(r.name)}</b><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'обновим':'добавим'}</span></div>
-              <div class="muted" style="font-size:var(--fs-12)">${esc(CATEGORIES.find(c => c.id===r.cat).name)} · ${fmt(r.price)}${r.salePercent?' · −'+r.salePercent+'%':''}</div>
-              <div class="muted" style="font-size:var(--fs-12)">${r.popular?'Покажем на главной':'Без ленты на главной'}${r.warning?' · '+esc(r.warning):''}</div>
-            </div></article>`).join('')}</div>
+          <div class="a-itemlist" style="margin-top:var(--sp-10)">
+            ${admin.menuImport.rows.map((r, i) => `
+            <div class="a-item">
+              <div class="a-item-main">
+                <b>${esc(r.name)}</b>
+                <span class="a-item-meta">${esc((CATEGORIES.find(c => c.id===r.cat) || { name:'Без категории' }).name)}${r.unit ? ' · ' + esc(r.unit) : ''}</span>
+              </div>
+              <div class="a-item-side">
+                <span>${fmt(r.price)}${r.salePercent ? ' · −' + r.salePercent + '%' : ''}</span>
+                <span class="a-item-meta"><span class="a-pill ${r.duplicate ? 'warn' : 'lime'}">${r.duplicate ? 'обновим' : 'добавим'}</span></span>
+              </div>
+              <div class="a-item-actions">
+                ${itemDetailsBtn('impMenu', 'm' + i)}
+              </div>
+            </div>
+            ${itemDetailsHtml('impMenu', 'm' + i, `
+              <div class="a-item-tags">
+                <span class="a-pill">Категория: ${esc((CATEGORIES.find(c => c.id===r.cat) || { name:'Без категории' }).name)}</span>
+                <span class="a-pill">Цена: ${fmt(r.price)}</span>
+                ${r.salePercent ? `<span class="a-pill warn">Скидка −${r.salePercent}%</span>` : ''}
+                <span class="a-pill ${r.popular ? 'lime' : ''}">${r.popular ? 'Покажем на главной' : 'Без ленты на главной'}</span>
+              </div>
+              ${r.warning ? `<p class="a-item-note">${esc(r.warning)}</p>` : ''}`)}`).join('')}
+          </div>
           ${admin.menuImport.errors.length ? `<div class="a-form-error">Не разобрано строк: ${admin.menuImport.errors.length} — ${admin.menuImport.errors.slice(0,4).map(esc).join('; ')}${admin.menuImport.errors.length>4?'…':''}</div>` : ''}
         </div>` : ''}
     </div>
@@ -1235,34 +1265,35 @@ function adminMenu(){
 const PROMO_TYPE_LABEL = { percent:'Процент', fixed:'Фиксированная', delivery:'Доставка' };
 const promoValueText = p => p.type === 'percent' ? p.value + '%' : (p.type === 'fixed' ? fmt(p.value) : 'бесплатно');
 
-/* Промокоды: таблица и карточки строятся из одного отфильтрованного списка */
+/* Промокоды: одна строка на код, детали раскрываются под строкой */
 function promosListHtml(list){
-  return `
-    <table class="a-table a-table-promos">
-      <thead><tr><th scope="col">Код</th><th scope="col">Тип</th><th scope="col">Значение</th><th scope="col">Мин. сумма</th><th scope="col">Использований</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
-      <tbody>
-        ${list.map(p => `
-          <tr>
-            <td><b>${esc(p.code)}</b>${p.active?'':'<div class="muted" style="font-size:var(--fs-11)">выключен</div>'}</td>
-            <td class="muted nw">${PROMO_TYPE_LABEL[p.type] || p.type}</td>
-            <td class="nw">${promoValueText(p)}</td>
-            <td class="muted nw">${p.min?fmt(p.min):'—'}</td>
-            <td class="muted nw">${promoUses(p.code)}</td>
-            <td class="nw"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${esc(p.code)}">${p.active?'Отключить':'Включить'}</button></td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-    <div class="a-cards">
-      ${list.map(p => `
-        <article class="a-card a-card-col">
-          <div class="a-card-body">
-            <div class="a-card-title"><b>${esc(p.code)}</b>${p.active?'':'<span class="a-pill warn">выключен</span>'}</div>
-            <div class="muted" style="font-size:var(--fs-12)">${PROMO_TYPE_LABEL[p.type] || p.type} · ${promoValueText(p)}${p.min?' · от '+fmt(p.min):''}</div>
-            <div class="muted" style="font-size:var(--fs-12)">Использований: ${promoUses(p.code)}</div>
-            <div class="a-row"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${esc(p.code)}">${p.active?'Отключить':'Включить'}</button></div>
-          </div>
-        </article>`).join('')}
-    </div>`;
+  return list.map(p => `
+    <div class="a-item">
+      <div class="a-item-main">
+        <b>${esc(p.code)}</b>
+        <span class="a-item-meta">${PROMO_TYPE_LABEL[p.type] || p.type} · ${promoValueText(p)}${p.min ? ' · от ' + fmt(p.min) : ''}</span>
+      </div>
+      <div class="a-item-side">
+        <span>${promoUses(p.code)} ${plural(promoUses(p.code),'использование','использования','использований')}</span>
+        <span class="a-item-meta"><span class="a-pill ${p.active ? 'lime' : 'warn'}">${p.active ? 'включён' : 'выключен'}</span></span>
+      </div>
+      <div class="a-item-actions">
+        <button class="a-btn ${p.active ? 'danger' : ''}" data-act="admin-promo-toggle" data-code="${esc(p.code)}">${p.active ? 'Отключить' : 'Включить'}</button>
+        ${itemDetailsBtn('promos', p.code)}
+      </div>
+    </div>
+    ${itemDetailsHtml('promos', p.code, `
+      <div class="a-item-tags">
+        <span class="a-pill">Тип: ${PROMO_TYPE_LABEL[p.type] || p.type}</span>
+        <span class="a-pill">Скидка: ${promoValueText(p)}</span>
+        <span class="a-pill">Минимальный заказ: ${p.min ? fmt(p.min) : 'без ограничения'}</span>
+        <span class="a-pill">Использований: ${promoUses(p.code)}</span>
+      </div>
+      <p class="a-item-note">${p.type === 'percent'
+        ? 'Процент считается от суммы блюд после промокода, доставка не уменьшается.'
+        : (p.type === 'fixed'
+          ? 'Фиксированная сумма вычитается из заказа, но не больше его суммы.'
+          : 'Доставка становится бесплатной, скидка на блюда не меняется.')}</p>`)}`).join('');
 }
 
 /* Журнал рассылок: запись хранит id аудитории, поэтому фильтруем по нему,
@@ -1497,6 +1528,37 @@ function adminMarketing(){
 
 /* -------------------------------- клиенты ------------------------------- */
 
+/* ---------------------------- список раздела ---------------------------- */
+
+/* Единая строка списка вместо пары «таблица + карточки»: одна разметка
+   работает и на широком экране, и на телефоне, поэтому цифры не могут
+   разойтись, а в DOM не остаётся дублей. */
+function itemOpen(group, id){
+  const arr = admin.open[group] || [];
+  return arr.indexOf(id) >= 0;
+}
+
+function itemDetailsBtn(group, id, label){
+  const open = itemOpen(group, id);
+  return `<button class="a-btn" data-act="admin-item-details" data-group="${group}" data-id="${esc(id)}"
+    aria-expanded="${open ? 'true' : 'false'}">${label || 'Детали'} ${open ? '▴' : '▾'}</button>`;
+}
+
+function itemDetailsHtml(group, id, content){
+  if (!itemOpen(group, id)) return '';
+  return `<div class="a-item-details" data-details-for="${esc(group + ':' + id)}">${content}</div>`;
+}
+
+function clientDateText(iso){
+  const t = isoToTime(iso);
+  if (!t) return '—';
+  const d = new Date(t);
+  const m = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'][d.getMonth()];
+  return `${d.getDate()} ${m} ${d.getFullYear()}`;
+}
+
+const clientSegmentClass = c => c.segment === 'VIP' ? 'lime' : (c.segment === 'Спящий' ? 'warn' : '');
+
 function bonusOpenFor(c){
   return !!(admin.bonusFor && admin.bonusFor.phone === c.phone);
 }
@@ -1516,60 +1578,39 @@ function bonusBoxHtml(c){
 }
 
 function focusBonusAmount(){
-  /* форма рендерится и в таблице, и в карточках (одна из них скрыта CSS) —
-     фокус ставим на видимый экземпляр поля */
-  const vis = [...document.querySelectorAll('.js-bonus-amount')].find(i => i.offsetParent !== null)
-    || document.querySelector('.js-bonus-amount');
+  const vis = document.querySelector('.js-bonus-amount');
   if (vis) vis.focus({ preventScroll:true });
 }
 
-/* Список гостей строится один раз, из отфильтрованного массива: и таблица,
-   и карточки показывают одни и те же строки — иначе на десктопе и на телефоне
-   цифры разойдутся */
+/* Список гостей строится один раз, из отфильтрованного массива: строка одна,
+   поэтому на десктопе и на телефоне показываются одни и те же данные */
 function clientsListHtml(list){
-  return `
-    <table class="a-table a-table-clients">
-      <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Последний</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
-      <tbody>
-        ${list.map(c => `
-          <tr>
-            <td><b>${esc(c.name)}</b> <span class="a-pill olive">${esc(clientOrigin(c))}</span></td>
-            <td class="muted nw">${esc(c.phone)}</td>
-            <td class="nw">${c.orders}</td>
-            <td class="nw">${fmt(c.sum)}</td>
-            <td class="nw">${fmt(c.bonus)}</td>
-            <td class="nw"><span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${esc(c.segment)}</span></td>
-            <td class="muted nw">${esc(clientLastText(c))}</td>
-            <td class="nw">
-              <div class="a-row">
-                <button class="a-btn" data-act="admin-bonus-open" data-phone="${esc(c.phone)}" aria-expanded="${bonusOpenFor(c)}">Начислить</button>
-                <button class="a-btn danger" data-act="admin-client-del" data-phone="${esc(c.phone)}" aria-label="Удалить гостя ${esc(c.name)}">${icon('trash')}</button>
-              </div>
-            </td>
-          </tr>
-          ${bonusOpenFor(c) ? `<tr class="a-bonus-tr"><td colspan="8">${bonusBoxHtml(c)}</td></tr>` : ''}`).join('')}
-      </tbody>
-    </table>
-
-    <div class="a-cards">
-      ${list.map(c => `
-        <article class="a-card">
-          <div class="a-card-body">
-            <div class="a-card-title"><b>${esc(c.name)}</b><span class="a-pill olive">${esc(clientOrigin(c))}</span></div>
-            <div class="muted" style="font-size:var(--fs-12)">${esc(c.phone)}</div>
-            <div class="a-card-row">
-              <span>${c.orders} ${plural(c.orders,'заказ','заказа','заказов')} · ${fmt(c.sum)}</span>
-              <span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${esc(c.segment)}</span>
-            </div>
-            <div class="muted" style="font-size:var(--fs-12)">Бонусы ${fmt(c.bonus)} · был ${esc(clientLastText(c))}</div>
-            <div class="a-row">
-              <button class="a-btn" data-act="admin-bonus-open" data-phone="${esc(c.phone)}" aria-expanded="${bonusOpenFor(c)}">Начислить баллы</button>
-              <button class="a-btn danger" data-act="admin-client-del" data-phone="${esc(c.phone)}" aria-label="Удалить гостя ${esc(c.name)}">${icon('trash')}</button>
-            </div>
-            ${bonusOpenFor(c) ? bonusBoxHtml(c) : ''}
-          </div>
-        </article>`).join('')}
-    </div>`;
+  return list.map(c => `
+    <div class="a-item">
+      <div class="a-item-main">
+        <b>${esc(c.name)}</b>
+        <span class="a-item-meta">${esc(c.phone)} · ${esc(clientOrigin(c))}</span>
+      </div>
+      <div class="a-item-side">
+        <span><b>${c.orders}</b> ${plural(c.orders,'заказ','заказа','заказов')} · ${fmt(c.sum)}</span>
+        <span class="a-item-meta"><span class="a-pill ${clientSegmentClass(c)}">${esc(c.segment)}</span> · был ${esc(clientLastText(c))}</span>
+      </div>
+      <div class="a-item-actions">
+        <button class="a-btn" data-act="admin-bonus-open" data-phone="${esc(c.phone)}" aria-expanded="${bonusOpenFor(c)}">Начислить</button>
+        ${itemDetailsBtn('clients', c.phone)}
+        <button class="a-btn danger" data-act="admin-client-del" data-phone="${esc(c.phone)}" aria-label="Удалить гостя ${esc(c.name)}">${icon('trash')}</button>
+      </div>
+    </div>
+    ${itemDetailsHtml('clients', c.phone, `
+      <div class="a-item-tags">
+        <span class="a-pill">Заказов: ${c.orders}</span>
+        <span class="a-pill">Сумма: ${fmt(c.sum)}</span>
+        <span class="a-pill">Бонусы: ${fmt(c.bonus)}</span>
+        <span class="a-pill ${clientSegmentClass(c)}">${esc(c.segment)}</span>
+        <span class="a-pill">Источник: ${esc(clientOrigin(c))}</span>
+      </div>
+      <p class="a-item-note">Первый заказ: ${esc(clientDateText(c.firstDate))} · последний: ${esc(clientDateText(c.lastDate))}</p>`)}
+    ${bonusOpenFor(c) ? `<div class="a-item-details">${bonusBoxHtml(c)}</div>` : ''}`).join('');
 }
 
 function adminClients(){
@@ -1608,33 +1649,29 @@ function adminClients(){
         <div class="muted" style="font-size:var(--fs-12);margin-bottom:var(--sp-8)">
           Добавим: ${admin.clientImport.rows.filter(r => !r.duplicate).length}. Обновим историю: ${admin.clientImport.rows.filter(r => r.duplicate).length}.
         </div>
-        <table class="a-table a-table-import">
-          <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Статус</th></tr></thead>
-          <tbody>
-            ${admin.clientImport.rows.map(r => `
-              <tr>
-                <td><b>${r.name}</b></td>
-                <td class="muted">${r.phone}</td>
-                <td>${r.orders}</td>
-                <td>${fmt(r.sum)}</td>
-                <td>${fmt(r.bonus)}</td>
-                <td>${r.segment}</td>
-                <td>${r.duplicate ? '<span class="a-pill warn">уже есть — обновим историю</span>' : '<span class="a-pill lime">добавим</span>'}</td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-        <div class="a-cards">
+        <div class="a-itemlist">
           ${admin.clientImport.rows.map(r => `
-            <article class="a-card a-card-col">
-              <div class="a-card-body">
-                <div class="a-card-title"><b>${r.name}</b><span class="muted" style="font-size:var(--fs-12)">${r.phone}</span></div>
-                <div class="a-card-row">${r.orders} ${plural(r.orders,'заказ','заказа','заказов')} · ${fmt(r.sum)}</div>
-                <div class="muted" style="font-size:var(--fs-12)">Бонусы ${fmt(r.bonus)} · ${r.segment}</div>
-                <div class="a-card-row"><span class="a-pill ${r.duplicate?'warn':'lime'}">${r.duplicate?'уже есть — обновим историю':'добавим'}</span></div>
+            <div class="a-item">
+              <div class="a-item-main">
+                <b>${esc(r.name)}</b>
+                <span class="a-item-meta">${esc(r.phone)}</span>
               </div>
-            </article>`).join('')}
-        </div>
-        ${admin.clientImport.errors && admin.clientImport.errors.length ? `
+              <div class="a-item-side">
+                <span>${r.orders} ${plural(r.orders,'заказ','заказа','заказов')} · ${fmt(r.sum)}</span>
+                <span class="a-item-meta"><span class="a-pill ${r.duplicate ? 'warn' : 'lime'}">${r.duplicate ? 'уже есть — обновим историю' : 'добавим'}</span></span>
+              </div>
+              <div class="a-item-actions">
+                ${itemDetailsBtn('impClients', r.phone)}
+              </div>
+            </div>
+            ${itemDetailsHtml('impClients', r.phone, `
+              <div class="a-item-tags">
+                <span class="a-pill">Заказов: ${r.orders}</span>
+                <span class="a-pill">Сумма: ${fmt(r.sum)}</span>
+                <span class="a-pill">Бонусы: ${fmt(r.bonus)}</span>
+                <span class="a-pill">Сегмент: ${esc(r.segment)}</span>
+              </div>`)}`).join('')}
+        </div>        ${admin.clientImport.errors && admin.clientImport.errors.length ? `
           <div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-10);color:var(--danger)">Не разобрано строк: ${admin.clientImport.errors.length} — ${admin.clientImport.errors.slice(0,3).join('; ')}${admin.clientImport.errors.length>3?'…':''}</div>` : ''}
       </div>` : ''}
   </div>`;
@@ -1642,19 +1679,162 @@ function adminClients(){
 
 /* ------------------------------- аналитика ------------------------------- */
 
+/* Отчёт собирается из настоящей истории заказов — зашитых цифр здесь нет.
+   Период задаёт окно, «прошлый период» — такое же окно перед текущим. */
+const ANALYTICS_PERIODS = [
+  { v:'7d',  label:'Последние 7 дней',  days:7 },
+  { v:'14d', label:'Последние 14 дней', days:14 },
+  { v:'30d', label:'Последние 30 дней', days:30 },
+  { v:'all', label:'Вся история',       days:0 }
+];
+
+const MONTH_SHORT = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const WEEK_SHORT  = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+
+/* Отменённый и отклонённый заказ деньги не принёс — в выручку его не берём */
+const acceptedOrders = list => list.filter(o => !DEAD_STATUSES.includes(o.status));
+
+function analyticsWindow(period){
+  const p = ANALYTICS_PERIODS.find(x => x.v === period) || ANALYTICS_PERIODS[2];
+  if (!p.days) return { from:null, to:null, prevFrom:null, prevTo:null, days:null, label:p.label };
+  const from = dayStart(p.days - 1);
+  return {
+    from, to: Date.now(), days: p.days, label: p.label,
+    prevFrom: dayStart(p.days * 2 - 2), prevTo: from - 1
+  };
+}
+
+function analyticsOrders(from, to){
+  return state.orders.filter(o => {
+    const ts = Number(o.ts) || 0;
+    if (!ts) return false;
+    if (from != null && ts < from) return false;
+    if (to != null && ts > to) return false;
+    return true;
+  });
+}
+
+function analyticsTotals(list){
+  const ok = acceptedOrders(list);
+  const revenue = ok.reduce((s,o) => s + (Number(o.total) || 0), 0);
+  const delivery = ok.filter(o => o.deliveryType === 'delivery').length;
+  const pickup = ok.filter(o => o.deliveryType === 'pickup').length;
+  const table = ok.filter(o => o.deliveryType === 'table').length;
+  return {
+    orders: ok.length,
+    revenue,
+    avg: ok.length ? Math.round(revenue / ok.length) : 0,
+    delivery, pickup, table,
+    cancelled: list.length - ok.length,
+    share: n => ok.length ? Math.round(n / ok.length * 100) : 0
+  };
+}
+
+function analyticsDelta(now, prev, key){
+  if (!prev || !prev.orders || !now.orders || !prev[key]) return '';
+  const d = Math.round((now[key] - prev[key]) / prev[key] * 100);
+  return (d > 0 ? '+' : (d < 0 ? '−' : '')) + Math.abs(d) + '% к прошлому периоду';
+}
+
+/* Сравнивать не с чем — так и пишем, пустая строка выглядела бы поломкой */
+function analyticsCompareText(w, prev){
+  if (!prev) return 'за ' + (w.days ? w.days + ' дней' : 'всю историю');
+  if (!prev.orders) return 'до этого периода заказов ещё не было';
+  return '';
+}
+
+function analyticsWeekdays(list){
+  const counts = [0,0,0,0,0,0,0];
+  acceptedOrders(list).forEach(o => {
+    const d = new Date(Number(o.ts) || 0);
+    counts[(d.getDay() + 6) % 7] += 1;
+  });
+  return counts.map((v,i) => ({ d: WEEK_SHORT[i], v }));
+}
+
+function analyticsTopDishes(list, limit){
+  const map = new Map();
+  acceptedOrders(list).forEach(o => (o.items || []).forEach(i => {
+    const name = i.name || (dishById(i.dishId) || {}).name || i.dishId;
+    const qty = Number(i.qty) || 0;
+    const row = map.get(name) || { name, qty:0, sum:0 };
+    row.qty += qty;
+    row.sum += (Number(i.price) || 0) * qty;
+    map.set(name, row);
+  }));
+  return [...map.values()].sort((a,b) => b.qty - a.qty || b.sum - a.sum).slice(0, limit || 5);
+}
+
+function analyticsRangeLabel(from, to){
+  const a = new Date(from), b = new Date(to);
+  const am = MONTH_SHORT[a.getMonth()], bm = MONTH_SHORT[b.getMonth()];
+  return am === bm ? `${a.getDate()}–${b.getDate()} ${bm}` : `${a.getDate()} ${am} – ${b.getDate()} ${bm}`;
+}
+
+/* Разбивка по неделям: последняя неделя — последние 7 дней, дальше назад */
+function analyticsWeeks(count){
+  const rows = [];
+  for (let i = 0; i < (count || 4); i++){
+    const from = dayStart(i * 7 + 6);
+    const to = dayStart(i * 7) + 86399999;
+    const t = analyticsTotals(analyticsOrders(from, to));
+    rows.push({ from, to, label: analyticsRangeLabel(from, to), ...t });
+  }
+  return rows;
+}
+
+function analyticsHistoryDays(){
+  const ts = state.orders.map(o => Number(o.ts) || 0).filter(Boolean);
+  if (!ts.length) return 1;
+  return Math.max(1, Math.round((Date.now() - Math.min(...ts)) / 86400000) + 1);
+}
+
 function adminAnalytics(){
-  const bars = [
-    { d:'Пн', v:41 }, { d:'Вт', v:58 }, { d:'Ср', v:47 }, { d:'Чт', v:72 },
-    { d:'Пт', v:96 }, { d:'Сб', v:128 }, { d:'Вс', v:114 }
-  ];
-  const top = DISHES.slice().sort((a,b)=>b.price-a.price).slice(0,5);
-  const max = Math.max(...bars.map(b=>b.v));
+  const f = admin.f.analytics;
+  const w = analyticsWindow(f.period);
+  const list = analyticsOrders(w.from, w.to);
+  const t = analyticsTotals(list);
+  const prev = w.prevFrom != null ? analyticsTotals(analyticsOrders(w.prevFrom, w.prevTo)) : null;
+  const bars = analyticsWeekdays(list);
+  const top = analyticsTopDishes(list, 5);
+  const maxBar = Math.max(1, ...bars.map(b => b.v));
+  const maxTop = Math.max(1, ...top.map(d => d.qty));
+  const weeks = analyticsWeeks(4);
+  const days = w.days || analyticsHistoryDays();
+  const perDay = t.orders ? (Math.round(t.orders / days * 10) / 10).toString().replace('.', ',') : '0';
+  const cmp = analyticsCompareText(w, prev);
+  const cmpAvg = cmp || analyticsDelta(t, prev, 'avg');
+  const cmpRev = cmp || analyticsDelta(t, prev, 'revenue');
   return `
+  <div class="a-toolbar">
+    <label class="a-filter-legend" for="aPeriod">Период</label>
+    <select class="input-plain a-toolbar-sort" id="aPeriod" data-act="admin-analytics-period" aria-label="Период отчёта">
+      ${ANALYTICS_PERIODS.map(p => `<option value="${p.v}" ${f.period===p.v?'selected':''}>${p.label}</option>`).join('')}
+    </select>
+    <span class="a-toolbar-count">За период: ${list.length} ${plural(list.length,'заказ','заказа','заказов')} · принято ${t.orders}${t.cancelled ? ' · отменено ' + t.cancelled : ''}</span>
+  </div>
+
   <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18)">
-    <div class="a-stat"><div class="lbl">Выручка за неделю</div><div class="val lime">${fmt(684300)}</div><div class="delta">+14% к прошлой неделе</div></div>
-    <div class="a-stat"><div class="lbl">Заказов</div><div class="val">556</div><div class="delta">79 в день</div></div>
-    <div class="a-stat"><div class="lbl">Средний чек</div><div class="val">${fmt(1231)}</div><div class="delta">+2,1%</div></div>
-    <div class="a-stat"><div class="lbl">Доставка / самовывоз</div><div class="val">72% / 28%</div><div class="delta">среднее время 41 мин</div></div>
+    <div class="a-stat">
+      <div class="lbl">Выручка за период</div>
+      <div class="val lime">${fmt(t.revenue)}</div>
+      <div class="delta">${cmpRev}</div>
+    </div>
+    <div class="a-stat">
+      <div class="lbl">Заказов</div>
+      <div class="val">${t.orders}</div>
+      <div class="delta">${perDay} в день${t.cancelled ? ' · отменено ' + t.cancelled : ''}</div>
+    </div>
+    <div class="a-stat">
+      <div class="lbl">Средний чек</div>
+      <div class="val">${fmt(t.avg)}</div>
+      <div class="delta">${cmpAvg}</div>
+    </div>
+    <div class="a-stat">
+      <div class="lbl">Как получили</div>
+      <div class="val">${t.share(t.delivery)}% / ${t.share(t.pickup)}% / ${t.share(t.table)}%</div>
+      <div class="delta">доставка · самовывоз · к столу</div>
+    </div>
   </div>
 
   <div class="a-grid a-grid-split" style="margin-bottom:var(--sp-16)">
@@ -1664,51 +1844,164 @@ function adminAnalytics(){
         ${bars.map(b => `
           <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:var(--sp-8);height:100%;justify-content:flex-end">
             <span style="font-size:var(--fs-12);color:var(--muted)">${b.v}</span>
-            <div style="width:100%;height:${Math.round(b.v/max*125)}px;background:var(--lime);border-radius:8px 8px 0 0"></div>
+            <div style="width:100%;height:${Math.round(b.v/maxBar*125)}px;background:var(--lime);border-radius:8px 8px 0 0"></div>
             <span style="font-size:var(--fs-12);color:var(--muted)">${b.d}</span>
           </div>`).join('')}
       </div>
+      <p class="a-form-note">Принятые заказы за ${esc(w.label.toLowerCase())}. Отменённые и отклонённые в выручку не входят.</p>
     </div>
     <div class="a-panel">
       <h2>Популярные блюда</h2>
-      ${top.map((d,i) => `
+      ${top.length ? top.map((d,i) => `
         <div style="margin-bottom:var(--sp-12)">
-          <div class="row between" style="font-size:var(--fs-13);margin-bottom:var(--sp-6)"><span>${i+1}. ${d.name}</span><span class="muted">${[214,187,143,121,96][i]} шт.</span></div>
-          <div class="a-bar"><i style="width:${[100,87,67,56,45][i]}%"></i></div>
-        </div>`).join('')}
+          <div class="row between" style="font-size:var(--fs-13);margin-bottom:var(--sp-6)"><span>${i+1}. ${esc(d.name)}</span><span class="muted">${d.qty} шт. · ${fmt(d.sum)}</span></div>
+          <div class="a-bar"><i style="width:${Math.round(d.qty/maxTop*100)}%"></i></div>
+        </div>`).join('') : '<p class="a-form-note">За этот период заказов нет.</p>'}
     </div>
   </div>
 
-  <div class="a-panel" style="margin-top:var(--sp-16)">
+  <div class="a-panel">
     <div class="row between">
       <h2>Отчёт по неделям</h2>
       <div class="a-row">
-        <button class="a-btn" data-act="admin-toast" data-msg="Отчёт выгружен в CSV">Выгрузить CSV</button>
-        <button class="a-btn" data-act="admin-toast" data-msg="Отчёт выгружен в Excel">Выгрузить Excel</button>
+        <button class="a-btn" data-act="admin-analytics-csv">Выгрузить CSV</button>
+        <button class="a-btn" data-act="admin-analytics-xlsx">Выгрузить Excel</button>
       </div>
     </div>
-    <table class="a-table a-table-report" style="margin-top:var(--sp-12)">
-      <thead><tr><th scope="col">Период</th><th scope="col">Заказов</th><th scope="col">Выручка</th><th scope="col">Средний чек</th><th scope="col">Доставка</th></tr></thead>
-      <tbody>
-        ${[['20–26 октября',556,'684 300 ₽','1 231 ₽','72%'],
-           ['13–19 октября',487,'601 900 ₽','1 236 ₽','70%'],
-           ['6–12 октября',455,'558 200 ₽','1 227 ₽','68%']].map(r=>`
-          <tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td></tr>`).join('')}
-      </tbody>
-    </table>
-    <div class="a-cards">
-      ${[['20–26 октября',556,'684 300 ₽','1 231 ₽','72%'],
-         ['13–19 октября',487,'601 900 ₽','1 236 ₽','70%'],
-         ['6–12 октября',455,'558 200 ₽','1 227 ₽','68%']].map(r=>`
-        <article class="a-card a-card-col">
-          <div class="a-card-body">
-            <div class="a-card-title"><b>${r[0]}</b></div>
-            <div class="a-card-row">${r[1]} ${plural(r[1],'заказ','заказа','заказов')} · ${r[2]}</div>
-            <div class="muted" style="font-size:var(--fs-12)">Средний чек ${r[3]} · доставка ${r[4]}</div>
-          </div>
-        </article>`).join('')}
-    </div>
+    ${weeks.map(r => `
+      <div class="sum-row">
+        <div>
+          <b>${esc(r.label)}</b>
+          <div class="muted" style="font-size:var(--fs-11)">${r.orders} ${plural(r.orders,'заказ','заказа','заказов')}${r.cancelled ? ' · отменено ' + r.cancelled : ''}</div>
+        </div>
+        <div style="text-align:right">
+          <b>${fmt(r.revenue)}</b>
+          <div class="muted" style="font-size:var(--fs-11)">средний чек ${fmt(r.avg)} · доставка ${r.share(r.delivery)}%</div>
+        </div>
+      </div>`).join('')}
+    <p class="a-form-note">Цифры посчитаны по демо-истории заказов в этой панели. В рабочем счёте они придут из iiko — здесь их считает браузер.</p>
   </div>`;
+}
+
+/* ------------------------------ выгрузка ------------------------------ */
+
+/* Строка и файл для отчёта: одни и те же данные уходят в CSV и в XLSX */
+function analyticsExportRows(){
+  const w = analyticsWindow(admin.f.analytics.period);
+  const t = analyticsTotals(analyticsOrders(w.from, w.to));
+  const rows = [
+    ['Отчёт «васаби.» — демо-данные'],
+    ['Период', w.label],
+    ['Заказов принято', t.orders],
+    ['Выручка, ₽', t.revenue],
+    ['Средний чек, ₽', t.avg],
+    ['Доставка, %', t.share(t.delivery)],
+    ['Самовывоз, %', t.share(t.pickup)],
+    ['К столу (QR), %', t.share(t.table)],
+    ['Отменено и отклонено', t.cancelled],
+    [],
+    ['Неделя', 'Заказов', 'Выручка, ₽', 'Средний чек, ₽', 'Доставка, %']
+  ];
+  analyticsWeeks(4).forEach(r => rows.push([r.label, r.orders, r.revenue, r.avg, r.share(r.delivery)]));
+  return rows;
+}
+
+function analyticsCsvText(){
+  const cell = c => '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"';
+  return '\uFEFF' + analyticsExportRows().map(r => r.map(cell).join(';')).join('\r\n');
+}
+
+/* Настоящий XLSX без библиотек: ZIP-архив без сжатия и один лист. */
+const XLSX_CRC = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++){
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(bytes){
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = XLSX_CRC[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function zipStore(files){
+  const enc = new TextEncoder();
+  const u16 = n => [n & 0xFF, (n >>> 8) & 0xFF];
+  const u32 = n => [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+  const body = [], central = [];
+  let offset = 0;
+  files.forEach(f => {
+    const name = enc.encode(f.name);
+    const data = enc.encode(f.data);
+    const crc = crc32(data);
+    const local = [...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21),
+      ...u32(crc), ...u32(data.length), ...u32(data.length), ...u16(name.length), ...u16(0)];
+    body.push(new Uint8Array(local), name, data);
+    central.push({ name, crc, size: data.length, offset });
+    offset += local.length + name.length + data.length;
+  });
+  const dir = [];
+  let dirSize = 0;
+  central.forEach(c => {
+    const head = [...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21),
+      ...u32(c.crc), ...u32(c.size), ...u32(c.size), ...u16(c.name.length), ...u16(0), ...u16(0),
+      ...u16(0), ...u16(0), ...u32(0), ...u32(c.offset)];
+    dir.push(new Uint8Array(head), c.name);
+    dirSize += head.length + c.name.length;
+  });
+  const end = [...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(central.length), ...u16(central.length),
+    ...u32(dirSize), ...u32(offset), ...u16(0)];
+  const chunks = [...body, ...dir, new Uint8Array(end)];
+  const total = chunks.reduce((s,c) => s + c.length, 0);
+  const out = new Uint8Array(total);
+  let pos = 0;
+  chunks.forEach(c => { out.set(c, pos); pos += c.length; });
+  return out;
+}
+
+const xlsxEscape = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function xlsxSheetXml(rows){
+  const cols = ['A','B','C','D','E'];
+  const body = rows.map((row, r) => {
+    const cells = row.map((v, c) => {
+      const ref = cols[c] + (r + 1);
+      if (typeof v === 'number' && isFinite(v)) return `<c r="${ref}"><v>${v}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xlsxEscape(v == null ? '' : v)}</t></is></c>`;
+    }).join('');
+    return `<row r="${r + 1}">${cells}</row>`;
+  }).join('');
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+}
+
+function analyticsXlsxBytes(){
+  const decl = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  return zipStore([
+    { name:'[Content_Types].xml', data: decl +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+      + '</Types>' },
+    { name:'_rels/.rels', data: decl +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      + '</Relationships>' },
+    { name:'xl/workbook.xml', data: decl +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheets><sheet name="Отчёт" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+    { name:'xl/_rels/workbook.xml.rels', data: decl +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+      + '</Relationships>' },
+    { name:'xl/worksheets/sheet1.xml', data: xlsxSheetXml(analyticsExportRows()) }
+  ]);
 }
 
 /* ------------------------------- настройки ------------------------------- */
@@ -1847,43 +2140,26 @@ function adminQr(){
       <h2>Столы точки «${loc.name}»</h2>
       <button class="a-btn" data-act="admin-qr-print" data-loc="${loc.id}" data-count="${tables.length}">${icon('printer')} Печать всех листов</button>
     </div>
-    <table class="a-table a-table-qr">
-      <thead><tr><th scope="col">Стол</th><th scope="col">QR</th><th scope="col">Адрес меню</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
-      <tbody>
-        ${tables.map(no => {
-          const u = menuUrl(no, loc.id);
-          return `
-          <tr>
-            <td><b>№ ${no}</b></td>
-            <td><span class="qr-mini">${QR.svg(u, { ec:q.ec, px:1.6, margin:2 })}</span></td>
-            <td class="muted" style="font-size:var(--fs-12)">${u}</td>
-            <td>
-              <div class="a-row">
-                <button class="a-btn" data-act="admin-qr-png" data-no="${no}" data-loc="${loc.id}">PNG</button>
-                <button class="a-btn" data-act="admin-qr-open" data-no="${no}" data-loc="${loc.id}">Открыть меню</button>
-              </div>
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-    <div class="a-cards">
+    <div class="a-itemlist">
       ${tables.map(no => {
         const u = menuUrl(no, loc.id);
         return `
-        <article class="a-card a-card-col">
-          <div class="a-card-body">
-            <div class="a-card-title"><b>№ ${no}</b></div>
-            <div class="a-row" style="align-items:center;gap:var(--sp-12)">
-              <span class="qr-mini">${QR.svg(u, { ec:q.ec, px:1.6, margin:2 })}</span>
-              <span class="muted" style="font-size:var(--fs-12);word-break:break-all">${u}</span>
-            </div>
-            <div class="a-row">
-              <button class="a-btn" data-act="admin-qr-png" data-no="${no}" data-loc="${loc.id}">PNG</button>
-              <button class="a-btn" data-act="admin-qr-open" data-no="${no}" data-loc="${loc.id}">Открыть меню</button>
-            </div>
+        <div class="a-item">
+          <div class="a-item-main">
+            <b>№ ${no}</b>
+            <span class="a-item-meta">Откроет меню по камере телефона</span>
           </div>
-        </article>`;
+          <div class="a-item-side">
+            <span class="qr-mini">${QR.svg(u, { ec:q.ec, px:1.6, margin:2 })}</span>
+          </div>
+          <div class="a-item-actions">
+            <button class="a-btn" data-act="admin-qr-png" data-no="${no}" data-loc="${loc.id}">PNG</button>
+            <button class="a-btn" data-act="admin-qr-open" data-no="${no}" data-loc="${loc.id}">Открыть меню</button>
+            ${itemDetailsBtn('qr', String(no))}
+          </div>
+        </div>
+        ${itemDetailsHtml('qr', String(no), `
+          <p class="a-item-note">Адрес меню: <code class="a-item-code">${esc(u)}</code></p>`)}`;
       }).join('')}
     </div>
     <p class="muted small" style="margin-top:var(--sp-12)">
@@ -2002,10 +2278,19 @@ document.addEventListener('click', ev => {
   if (act === 'admin-orders-csv'){
     const list = sortedFilterItems('orders');
     if (!list.length){ toast('Нет заказов для выгрузки'); return; }
-    const now = new Date();
-    const stamp = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
-    downloadTextFile('wasabi-zakazy-' + stamp + '.csv', ordersCsvText(list));
+    downloadTextFile('wasabi-zakazy-' + fileStamp() + '.csv', ordersCsvText(list));
     toast('Выгружено заказов: ' + list.length + ' — файл откроется в Excel');
+    return;
+  }
+  if (act === 'admin-analytics-csv'){
+    downloadTextFile('wasabi-otchet-' + fileStamp() + '.csv', analyticsCsvText());
+    toast('Отчёт выгружен в CSV — файл откроется в Excel');
+    return;
+  }
+  if (act === 'admin-analytics-xlsx'){
+    downloadBytesFile('wasabi-otchet-' + fileStamp() + '.xlsx', analyticsXlsxBytes(),
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    toast('Отчёт выгружен в Excel');
     return;
   }
   if (act === 'admin-toast'){ toast(el.dataset.msg); }
@@ -2067,6 +2352,19 @@ document.addEventListener('click', ev => {
     renderAdmin();
     if (i < 0){
       const det = document.querySelector('[data-details-for="' + id + '"]');
+      if (det) det.scrollIntoView({ block:'nearest', behavior:'smooth' });
+    }
+  }
+  if (act === 'admin-item-details'){
+    const group = el.dataset.group;
+    const id = el.dataset.id;
+    const arr = admin.open[group] || (admin.open[group] = []);
+    const i = arr.indexOf(id);
+    if (i >= 0) arr.splice(i, 1); else arr.push(id);
+    renderAdmin();
+    if (i < 0){
+      const det = [...document.querySelectorAll('[data-details-for]')]
+        .find(d => d.dataset.detailsFor === group + ':' + id);
       if (det) det.scrollIntoView({ block:'nearest', behavior:'smooth' });
     }
   }
@@ -2436,7 +2734,7 @@ document.addEventListener('click', ev => {
       sub:dishPrice(d), delivery:RULES.deliveryPrice, discount:0, bonus:0, total:dishPrice(d) + RULES.deliveryPrice,
       status:'new', address:'Ташкентская 198', comment:'Домофон 42', payment:'card', promo:null,
       deliveryType:'delivery', locationId:'l1', addressId:'a1', slot:null,
-      customer:'Гость с терминала', phone:'+7 926 640-08-31'
+      customer:state.user.name, phone:state.user.phone
     };
     state.orders.unshift(order);
     recordClientOrder(order);
@@ -2587,6 +2885,11 @@ document.addEventListener('change', ev => {
     renderFilterList(section);
     syncFilterChips(section);
     updateFilterMeta(section);
+    return;
+  }
+  if (el.dataset.act === 'admin-analytics-period'){
+    admin.f.analytics.period = el.value;
+    renderAdmin();
     return;
   }
   if (el.dataset.act === 'admin-setting' && ['bonusPercent','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)){

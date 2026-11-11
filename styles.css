@@ -790,32 +790,27 @@ body[data-mode="admin"] .tb-size{display:none;}
 /* пояснение под заголовком: единый вертикальный ритм 14 px */
 .a-lead{margin:0 0 var(--sp-14);font-size:var(--fs-13);color:var(--muted);}
 .a-lead-sm{margin:0 0 var(--sp-10);font-size:var(--fs-12);color:var(--muted);}
-/* таблица не сжимается в нечитаемые колонки: если панель уже —
-   крутится таблица внутри панели, а не страница целиком */
-.a-table{width:100%;border-collapse:collapse;font-size:var(--fs-13);min-width:640px;}
-.a-table-clients{min-width:820px;}
-.a-table .nw{white-space:nowrap;}
-.a-table th{
-  text-align:left;font-size:var(--fs-11);letter-spacing:.08em;text-transform:uppercase;
-  color:var(--muted);font-weight:600;padding:0 var(--sp-10) var(--sp-10);border-bottom:1px solid var(--line-soft);
-}
-.a-table td{padding:var(--sp-12) var(--sp-10);border-bottom:1px solid var(--line-soft);vertical-align:middle;}
-.a-table tr:last-child td{border-bottom:0;}
-/* строка начисления баллов под гостем — та же идея, что «Детали» у блюд */
-.a-bonus-tr td{padding:var(--sp-12) var(--sp-12);background:var(--surface-2);}
+/* Строка начисления баллов — та же идея, что «Детали» у блюд */
 .a-bonus-box{display:flex;align-items:center;gap:var(--sp-8);flex-wrap:wrap;}
 .a-bonus-box .input-plain{width:110px;flex:none;}
-.a-table .thumb, .thumb{width:42px;height:42px;border-radius:10px;object-fit:cover;}
+.thumb{width:42px;height:42px;border-radius:10px;object-fit:cover;}
 
-/* широкие таблицы на телефоне заменяем карточками */
-.a-cards{display:none;gap:var(--sp-10);grid-template-columns:repeat(2,minmax(0,1fr));}
-.a-card{background:var(--surface-2);border-radius:14px;padding:var(--sp-12);display:flex;gap:var(--sp-12);}
-.a-card-col{display:block;}
-.a-card.is-stopped{opacity:.6;}
-.a-card-thumb{width:56px;height:56px;border-radius:12px;object-fit:cover;flex:none;}
-.a-card-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--sp-6);}
-.a-card-title{display:flex;align-items:baseline;gap:var(--sp-8);flex-wrap:wrap;font-size:var(--fs-14);}
-.a-card-row{display:flex;align-items:center;gap:var(--sp-8);flex-wrap:wrap;font-size:var(--fs-13);}
+/* Список гостей, промокодов, предпросмотра импорта и столов QR: одна
+   конструкция на все ширины вместо пары «таблица + карточки». В строке
+   только главное, остальное раскрывает кнопка «Детали» под строкой. */
+.a-itemlist{border:1px solid var(--line-soft);border-radius:14px;overflow:hidden;}
+.a-item{display:flex;align-items:center;gap:var(--sp-10);flex-wrap:wrap;padding:var(--sp-12) var(--sp-14);border-bottom:1px solid var(--line-soft);}
+.a-itemlist > :last-child{border-bottom:0;}
+.a-item-main{flex:1 1 220px;min-width:0;display:flex;flex-direction:column;gap:var(--sp-2);}
+.a-item-main b{overflow-wrap:anywhere;}
+.a-item-meta{font-size:var(--fs-12);color:var(--muted);}
+.a-item-side{display:flex;flex-direction:column;gap:var(--sp-4);font-size:var(--fs-13);color:var(--soft);}
+.a-item-actions{display:flex;gap:var(--sp-6);flex:none;flex-wrap:wrap;}
+.a-item-details{padding:var(--sp-12) var(--sp-14);border-bottom:1px solid var(--line-soft);background:var(--surface-2);}
+.a-item-details .a-pill{background:var(--surface);}
+.a-item-tags{display:flex;flex-wrap:wrap;gap:var(--sp-6);}
+.a-item-note{margin:var(--sp-8) 0 0;font-size:var(--fs-12);line-height:1.5;color:var(--muted);}
+.a-item-code{overflow-wrap:anywhere;}
 
 /* фото блюда: превью и загрузка своего снимка */
 .a-photo{display:flex;gap:var(--sp-14);align-items:flex-start;margin-top:var(--sp-12);}
@@ -907,8 +902,6 @@ body[data-mode="admin"] .tb-size{display:none;}
 .row-star{display:inline-flex;align-items:center;gap:var(--sp-8);}
 .row-star .ic{width:16px;height:16px;color:var(--lime);}
 .a-row{display:flex;gap:var(--sp-8);flex-wrap:wrap;}
-/* в таблице кнопки действий держатся в одну строку: перенос в столбик делал строку втрое выше картинки */
-.a-table .a-row{flex-wrap:nowrap;}
 
 /* Список блюд: одна конструкция на все ширины — без таблица/карточки и без
    горизонтальной прокрутки. В строке только главное, остальное раскрывает
@@ -997,8 +990,6 @@ body[data-mode="admin"] .tb-size{display:none;}
   border-top:1px solid var(--line-soft);padding-top:var(--sp-12);margin-top:var(--sp-4);
 }
 .a-reject-title{width:100%;font-size:var(--fs-12);color:var(--muted);}
-.a-table tr.is-stopped td{opacity:.55;}
-.a-table tr.is-stopped b{text-decoration:line-through;text-decoration-color:rgba(242,133,107,.6);}
 .a-bar{height:8px;border-radius:999px;background:var(--surface-2);overflow:hidden;}
 .a-bar i{display:block;height:100%;background:var(--lime);border-radius:999px;}
 
@@ -1285,7 +1276,7 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 }
 
 @container admin (max-width:760px){
-  /* таблица шире панели: пусть крутится она, а не вся страница */
+  /* содержимое шире панели: пусть крутится оно, а не вся страница */
   .a-panel{overflow-x:auto;}
   .a-grid-3{grid-template-columns:repeat(2,minmax(0,1fr));}
   .a-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
@@ -1293,18 +1284,7 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
   .a-tabs button{flex:none;}
 }
 
-/* Таблицы админки шире панели уже на 1140 px: колонка действий
-   уезжала за горизонтальную прокрутку и терялась. Ниже этого порога
-   показываем карточки. Список блюд этому не подвержен: он сворачивает
-   детали под кнопку «Детали» на любой ширине */
-@container admin (max-width:1140px){
-  .a-table-clients,.a-table-promos,.a-table-qr,.a-table-report,.a-table-import,.a-table-menu-import{display:none;}
-  .a-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));}
-}
-
 @container admin (max-width:560px){
-  /* карточки в одну колонку; заказы уже сами перестраиваются auto-fit */
-  .a-cards{grid-template-columns:minmax(0,1fr);}
   .dish-fields{grid-template-columns:minmax(0,1fr);}
   .a-photo{flex-direction:column;}
   .a-photo-preview{width:100%;height:150px;}
