@@ -150,6 +150,31 @@ const minOrderLeft = () => Math.max(0, RULES.minOrder - cartSubtotal());
 const bonusClient = phone => ADMIN_CLIENTS.find(c => normPhone(c.phone) === normPhone(phone));
 const currentBonusClient = () => bonusClient(state.user.phone);
 
+/* Оборот гостя — сумма выполненных заказов. По ней считается уровень.
+   Гость, переехавший из CRM, ещё не заказывал в прототипе: у него берём
+   сумму из карточки. */
+function clientTurnover(phone){
+  const digits = normPhone(phone);
+  if (!digits) return 0;
+  const mine = state.orders.filter(o => o.phone && normPhone(o.phone) === digits && o.status === 'done');
+  if (mine.length) return mine.reduce((s,o) => s + Math.max(0, Number(o.total)||0), 0);
+  const client = bonusClient(phone);
+  return client ? Math.max(0, Number(client.sum)||0) : 0;
+}
+
+/* Уровень текущего гостя: сам уровень, надбавка и сколько до следующего */
+const userTurnover = () => clientTurnover(state.user.phone);
+const userLevel = () => {
+  const turnover = userTurnover();
+  return {
+    turnover,
+    level: bonusLevelFor(turnover),
+    name: bonusLevelName(turnover),
+    add: bonusLevelAdd(turnover),
+    next: bonusNextLevel(turnover)
+  };
+};
+
 /* Срок списания: начисленные баллы живут bonusExpiryMonths месяцев.
    Лоты — каждое начисление отдельно: при списании берутся те, что сгорят раньше,
    а по истечении срока лот вычитается из баланса один раз */
@@ -556,6 +581,9 @@ function seedOrders(){
     const done = mine.filter(o => o.status === 'done');
     c.orders = mine.length;
     c.sum = done.reduce((s,o) => s + (Number(o.total) || 0), 0);
+    /* Кэшбэк пересчитываем по обороту гостя — вместе с надбавкой за его уровень,
+       чтобы начисленные баллы и процент в приложении совпадали */
+    done.forEach(o => { o.bonusEarn = bonusEarnFor(o.deliveryType, o.sub - o.discount, c.sum); });
     c.bonus = done.reduce((s,o) => s + (Number(o.bonusEarn) || 0), 0);
     c.lastDate = isoDay(Math.max(...mine.map(o => o.ts)));
     c.firstDate = isoDay(Math.min(...mine.map(o => o.ts)));
@@ -1327,6 +1355,8 @@ function payMethodRow(id, ico, name, note){
 function scrPayment(){
   const t = totals();
   const promoOk = state.promo && PROMOS.some(p => p.code === state.promo);
+  const lv = userLevel();
+  const cashbackPercent = bonusPercent(state.deliveryType, t.sub - t.discount, lv.turnover);
   return `
   ${appBar('Оплата')}
   <section class="section">
@@ -1365,7 +1395,7 @@ function scrPayment(){
       ${RULES.bonusEnabled ? `
         <p class="small soft">1 балл = 1 ₽. ${state.deliveryType === 'table'
           ? 'За заказ к столу без аккаунта баллы не начисляются.'
-          : `Кэшбэк ${bonusPercent(state.deliveryType, t.sub - t.discount)}% начислим после выполнения заказа.`}${bonusExpiryMonths() ? ` Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>
+          : `Кэшбэк ${cashbackPercent}% начислим после выполнения заказа.${lv.add ? ` Уровень ${esc(lv.name)} добавляет ${lv.add} п.п.` : ''}`}${bonusExpiryMonths() ? ` Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>
         ${state.deliveryType === 'table' ? '' : `
           <div class="pay-row ${t.bonusUse?'is-on':''}" ${t.bonusAvailable?'data-act="bonus-toggle" role="button" tabindex="0"':''} aria-pressed="${t.bonusUse>0}" style="margin-top:var(--sp-12)">
             <div class="pay-icon">${icon('gift')}</div>
@@ -1559,6 +1589,12 @@ function scrOrders(){
 function scrProfile(){
   const balance = bonusBalance();
   const history = bonusHistory();
+  const lv = userLevel();
+  const lvFrom = lv.level ? Number(lv.level.from)||0 : 0;
+  const lvPct = lv.next
+    ? Math.max(0, Math.min(100, Math.round((lv.turnover - lvFrom) / Math.max(1, (Number(lv.next.from)||0) - lvFrom) * 100)))
+    : 100;
+  const lvAdd = lv.add;
   return `
   ${appHeader()}
   <section class="section" style="padding-top:var(--sp-4)">
@@ -1582,15 +1618,26 @@ function scrProfile(){
       <p class="muted small" style="margin-top:var(--sp-4)">Кэшбэк с заказов · 1 балл = 1 ₽</p>
       <div class="bonus-balance"><b>${balance}</b><span>${plural(balance,'балл','балла','баллов')}</span></div>
       ${RULES.bonusEnabled
-        ? `<div class="bonus-channels">
+        ? `<div class="bonus-level">
+            <div class="bl-row">
+              <span class="bl-name">${esc(lv.name || '—')}</span>
+              <span class="bl-add">${lvAdd ? `+${lvAdd} п.п. к кэшбэку` : 'базовый кэшбэк'}</span>
+            </div>
+            ${lv.next
+              ? `<div class="bl-bar"><i style="width:${lvPct}%"></i></div>
+                 <p class="muted small" style="margin-top:var(--sp-8)">До уровня ${esc(lv.next.name)} — ${fmt(Math.max(0, (Number(lv.next.from)||0) - lv.turnover))}</p>`
+              : '<p class="muted small" style="margin-top:var(--sp-8)">Это самый высокий уровень.</p>'}
+          </div>
+          <div class="bonus-channels">
             ${BONUS_CHANNELS.map(ch => `
               <div class="bonus-channel">
-                <div class="bc-val">${ch.key ? bonusBasePercent(ch.id) + '%' : '—'}</div>
+                <div class="bc-val">${ch.key ? (bonusBasePercent(ch.id) + lvAdd) + '%' : '—'}</div>
                 <div class="bc-label">${ch.label}</div>
               </div>`).join('')}
           </div>
-          <p class="muted small" style="margin-top:var(--sp-10)">Базовый кэшбэк по каналу. Заказ в зале идёт без аккаунта — по нему баллы не начисляются.</p>
-          <p class="muted small" style="margin-top:var(--sp-6)"><b>Правила трат:</b> ${bonusRulesText()} То есть доставка от 2 000 ₽ даёт ${bonusPercent('delivery', 2000)}%, а заказ до 1 000 ₽ — ${bonusPercent('delivery', 999)}%.</p>
+          <p class="muted small" style="margin-top:var(--sp-10)">Кэшбэк по каналу с учётом вашего уровня${lvAdd ? ` (+${lvAdd} п.п.)` : ''}. Заказ в зале идёт без аккаунта — по нему баллы не начисляются.</p>
+          <p class="muted small" style="margin-top:var(--sp-6)"><b>Правила трат:</b> ${bonusRulesText()} То есть доставка от 2 000 ₽ даёт ${bonusPercent('delivery', 2000, lv.turnover)}%, а заказ до 1 000 ₽ — ${bonusPercent('delivery', 999, lv.turnover)}%.</p>
+          <p class="muted small" style="margin-top:var(--sp-6)"><b>Уровни:</b> ${bonusLevelsText()}.</p>
           <p class="muted small" style="margin-top:var(--sp-10)">Баллами можно оплатить до ${RULES.bonusMaxPay}% следующего заказа. ${bonusExpiryMonths() ? `Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')} после начисления.` : 'Баллы не сгорают.'}</p>`
         : '<p class="muted small" style="margin-top:var(--sp-10)">Программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
       <div class="bonus-history">
@@ -1977,13 +2024,13 @@ const FEATURE_GROUPS = [
     'Стоп-лист: блюдо пропадает из меню гостя сразу',
     'Акции: карусель на главной, тап = промокод или блюдо',
     'QR-меню на столе: заказ к столу без регистрации, оплата у стола',
-    'Профиль: бонусы, контакты, адресная книга, история заказов, доступ сотрудника',
+    'Профиль: бонусы, уровень гостя и прогресс до следующего, контакты, адресная книга, история заказов, доступ сотрудника',
     'Вход по SMS: номер проверяется, неверный код даёт ошибку и повторную отправку; экран открывается из списка экранов'
   ]},
   { title:'Админ-панель', items:[
     'Меню: создание и правка блюда, метки и скидки, своё фото, стоп-лист, поиск и сортировка, CSV-импорт',
     '«На главной»: какие блюда попадают в ленту любимого (до 6)',
-    'Маркетинг: промокоды, настройка кэшбэка и списания баллов, свои баннеры, демо-push',
+    'Маркетинг: промокоды, настройка кэшбэка, правил трат и уровней гостя, списания баллов, свои баннеры, демо-push',
     'Заказы: приём, статусы, отклонение с причиной',
     'Фильтры в админке: поиск, сортировка, панель «Фильтры» с честными счётчиками, чипы и сброс — в заказах, клиентах, меню, промокодах и журнале рассылок',
     'Выгрузка заказов в CSV: ровно те строки, что видны на экране',
@@ -2289,7 +2336,7 @@ const ACTIONS = {
         id:'o'+Date.now(), no: nextOrderNo(), ts: Date.now(), date: nowRu(),
         items: cartLines().map(l => ({ dishId:l.dishId, name:dishById(l.dishId).name, qty:l.qty, price:lineUnit(l), mods:l.mods })),
         sub:t.sub, delivery:t.delivery, discount:t.discount, bonus:t.bonusUse, total:t.total,
-        bonusEarn: bonusEarnFor(state.deliveryType, t.sub - t.discount),
+        bonusEarn: bonusEarnFor(state.deliveryType, t.sub - t.discount, userTurnover()),
         status:'new',
         deliveryType: state.deliveryType,
         locationId: state.deliveryType === 'table' ? state.table.locId : state.locationId,

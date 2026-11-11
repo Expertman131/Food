@@ -581,6 +581,12 @@ body[data-mode="admin"] .tb-size{display:none;}
 .bonus-balance{display:flex;align-items:baseline;gap:var(--sp-10);margin-top:var(--sp-18);color:var(--lime);}
 .bonus-balance b{font-size:var(--fs-40);line-height:1;letter-spacing:-.04em;}
 .bonus-balance span{font-size:var(--fs-16);font-weight:600;}
+.bonus-level{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:14px;padding:var(--sp-12);margin-top:var(--sp-16);}
+.bonus-level .bl-row{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-10);}
+.bonus-level .bl-name{font-size:var(--fs-18);font-weight:700;color:var(--lime);}
+.bonus-level .bl-add{font-size:var(--fs-12);color:var(--muted);}
+.bonus-level .bl-bar{height:6px;border-radius:999px;background:var(--line-soft);margin-top:var(--sp-10);overflow:hidden;}
+.bonus-level .bl-bar i{display:block;height:100%;border-radius:999px;background:var(--lime);}
 .bonus-channels{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-8);margin-top:var(--sp-16);}
 .bonus-channel{background:var(--surface-2);border:1px solid var(--line-soft);border-radius:14px;padding:var(--sp-10) var(--sp-8);text-align:center;}
 .bonus-channel .bc-val{font-size:var(--fs-18);font-weight:700;color:var(--lime);line-height:1.1;}

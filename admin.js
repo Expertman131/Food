@@ -31,7 +31,7 @@ const admin = {
      Внутри группы значения OR, между группами AND. */
   f: {
     orders:  { query:'', range:'', status:[], delivery:[], payment:[], location:[], reject:'', sumMin:'', sumMax:'', sort:'new' },
-    clients: { query:'', segment:[], source:[], sort:'name' },
+    clients: { query:'', segment:[], source:[], level:[], sort:'name' },
     menu:    { query:'', cat:[], state:[], popular:[], sort:'name' },
     promos:  { query:'', state:[], type:[], sort:'code' },
     push:    { audience:[], sort:'' },
@@ -556,7 +556,13 @@ const FILTER_DEFS = {
           const used = new Set(items.flatMap(clientSources));
           return [...used].filter(v => v).map(v => ({ v, label:v }));
         },
-        values: c => clientSources(c) }
+        values: c => clientSources(c) },
+      { key:'level', label:'Уровень', kind:'chips',
+        options: (section, items, sel) => {
+          const used = new Set(items.map(c => bonusLevelName(clientTurnover(c.phone))));
+          return [...used].filter(v => v).map(v => ({ v, label:v }));
+        },
+        values: c => [bonusLevelName(clientTurnover(c.phone))] }
     ]
   },
   menu: {
@@ -1327,7 +1333,11 @@ function bonusExampleText(){
   const months = Math.max(0, Number(RULES.bonusExpiryMonths) || 0);
   const delivery = bonusPercent('delivery', 1000);
   const pickup = bonusPercent('pickup', 1000);
+  const levels = bonusLevelsSorted()
+    .map(l => `${esc(l.name)} +${Number(l.add)||0} п.п.`)
+    .join(', ');
   return `Пример: при заказе блюд на 1 000 ₽ гость получит ${Math.floor(1000*delivery/100)} баллов при доставке и ${Math.floor(1000*pickup/100)} при самовывозе, а сможет списать до ${Math.floor(1000*RULES.bonusMaxPay/100)} баллов.` +
+    (levels ? ` Уровни гостя добавляют к кэшбэку: ${levels}` : '') +
     (months ? ` Баллы сгорят через ${months} ${plural(months,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.');
 }
 
@@ -1367,7 +1377,7 @@ function adminMarketing(){
     <div class="row between" style="align-items:flex-start;gap:var(--sp-16)">
       <div>
         <h2>Бонусная система</h2>
-        <p class="a-lead-sm" style="margin-top:var(--sp-6)">Простой кэшбэк: 1 балл = 1 ₽. Без уровней и отдельных условий по блюдам.${s.bonusExpiryMonths ? ` Баллы сгорают через ${s.bonusExpiryMonths} ${plural(s.bonusExpiryMonths,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.'}</p>
+        <p class="a-lead-sm" style="margin-top:var(--sp-6)">Кэшбэк: 1 балл = 1 ₽. Процент зависит от способа получения, от объёма заказа и от уровня гостя.${s.bonusExpiryMonths ? ` Баллы сгорают через ${s.bonusExpiryMonths} ${plural(s.bonusExpiryMonths,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.'}</p>
       </div>
       <span class="a-pill ${s.bonusEnabled?'lime':'warn'}">${s.bonusEnabled?'Включена':'Выключена'}</span>
     </div>
@@ -1395,11 +1405,27 @@ function adminMarketing(){
       </div>
     </div>
 
+    <h3 style="margin-top:var(--sp-18)">Уровни гостя</h3>
+    <p class="a-lead-sm" style="margin-top:var(--sp-6)">Уровень — это сумма выполненных заказов гостя. Он добавляет надбавку к кэшбэку в п.п. во всех каналах. Название и порог можно менять.</p>
+    <div style="margin-top:var(--sp-12)">
+      ${(RULES.bonusLevels || []).map((l, i) => `
+        <div class="a-row" style="gap:var(--sp-10);align-items:flex-end;margin-bottom:var(--sp-8)">
+          <label class="a-labeled" style="flex:1"><span>Название</span><input class="input-plain" type="text" maxlength="24" data-act="admin-level" data-index="${i}" data-field="name" value="${esc(l.name)}" ${s.bonusEnabled?'':'disabled'}></label>
+          <label class="a-labeled" style="width:170px"><span>От суммы заказов, ₽</span><input class="input-plain" type="number" min="0" step="1000" inputmode="numeric" data-act="admin-level" data-index="${i}" data-field="from" value="${Number(l.from)||0}" ${s.bonusEnabled?'':'disabled'}></label>
+          <label class="a-labeled" style="width:150px"><span>Надбавка, п.п.</span><input class="input-plain" type="number" min="0" max="30" step="1" inputmode="numeric" data-act="admin-level" data-index="${i}" data-field="add" value="${Number(l.add)||0}" ${s.bonusEnabled?'':'disabled'}></label>
+          <button class="a-btn" data-act="admin-level-del" data-index="${i}" aria-label="Убрать уровень ${esc(l.name)}" ${(RULES.bonusLevels||[]).length<=1?'disabled':''}>${icon('trash')}</button>
+        </div>`).join('')}
+      <div class="a-row" style="gap:var(--sp-10);margin-top:var(--sp-4)">
+        <button class="a-btn" data-act="admin-level-add">+ Добавить уровень</button>
+      </div>
+    </div>
+    <p class="a-form-note">Уровень считается по выполненным заказам: отменённые и отклонённые в оборот не идут. У гостей, переехавших из CRM, берётся сумма из их карточки.</p>
+
     <div class="a-grid a-grid-2" style="gap:var(--sp-10);margin-top:var(--sp-16)">
       <label class="a-labeled"><span>Срок списания баллов, месяцев</span><input class="input-plain" id="bonusExpiryMonths" type="number" min="0" max="60" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusExpiryMonths" value="${s.bonusExpiryMonths}" ${s.bonusEnabled?'':'disabled'}></label>
     </div>
     <p class="a-form-note" id="bonusExample">${bonusExampleText()}</p>
-    <p class="a-form-note">Кэшбэк считается от суммы блюд после промокода, без доставки. Списанные баллы возвращаются при отмене. Срок списания действует для новых начислений: уже начисленные баллы сохраняют свой срок. 0 месяцев — баллы не сгорают. Настройки применяются сразу и работают только в демо-вкладке; это не счёт iiko.</p>
+    <p class="a-form-note">Кэшбэк считается от суммы блюд после промокода, без доставки. Надбавки складываются: порог по сумме заказа + надбавка за уровень гостя. Списанные баллы возвращаются при отмене. Срок списания действует для новых начислений: уже начисленные баллы сохраняют свой срок. 0 месяцев — баллы не сгорают. Настройки применяются сразу и работают только в демо-вкладке; это не счёт iiko.</p>
   </div>
 
   <div class="a-grid a-grid-split" style="margin-bottom:var(--sp-16)">
@@ -1607,7 +1633,10 @@ function focusBonusAmount(){
 /* Список гостей строится один раз, из отфильтрованного массива: строка одна,
    поэтому на десктопе и на телефоне показываются одни и те же данные */
 function clientsListHtml(list){
-  return list.map(c => `
+  return list.map(c => {
+    const turnover = clientTurnover(c.phone);
+    const level = bonusLevelName(turnover);
+    return `
     <div class="a-item">
       <div class="a-item-main">
         <b>${esc(c.name)}</b>
@@ -1615,7 +1644,7 @@ function clientsListHtml(list){
       </div>
       <div class="a-item-side">
         <span><b>${c.orders}</b> ${plural(c.orders,'заказ','заказа','заказов')} · ${fmt(c.sum)}</span>
-        <span class="a-item-meta"><span class="a-pill ${clientSegmentClass(c)}">${esc(c.segment)}</span> · был ${esc(clientLastText(c))}</span>
+        <span class="a-item-meta"><span class="a-pill ${clientSegmentClass(c)}">${esc(c.segment)}</span> <span class="a-pill">Уровень ${esc(level)}</span> · был ${esc(clientLastText(c))}</span>
       </div>
       <div class="a-item-actions">
         <button class="a-btn" data-act="admin-bonus-open" data-phone="${esc(c.phone)}" aria-expanded="${bonusOpenFor(c)}">Начислить</button>
@@ -1629,10 +1658,13 @@ function clientsListHtml(list){
         <span class="a-pill">Сумма: ${fmt(c.sum)}</span>
         <span class="a-pill">Бонусы: ${fmt(c.bonus)}</span>
         <span class="a-pill ${clientSegmentClass(c)}">${esc(c.segment)}</span>
+        <span class="a-pill">Уровень: ${esc(level)}</span>
+        <span class="a-pill">Оборот: ${fmt(turnover)}</span>
         <span class="a-pill">Источник: ${esc(clientOrigin(c))}</span>
       </div>
       <p class="a-item-note">Первый заказ: ${esc(clientDateText(c.firstDate))} · последний: ${esc(clientDateText(c.lastDate))}</p>`)}
-    ${bonusOpenFor(c) ? `<div class="a-item-details">${bonusBoxHtml(c)}</div>` : ''}`).join('');
+    ${bonusOpenFor(c) ? `<div class="a-item-details">${bonusBoxHtml(c)}</div>` : ''}`;
+  }).join('');
 }
 
 function adminClients(){
@@ -2812,6 +2844,25 @@ document.addEventListener('click', ev => {
     toast('Порог убран');
     return;
   }
+  if (act === 'admin-level-add'){
+    const levels = (RULES.bonusLevels || []).slice();
+    const maxFrom = levels.reduce((m,l) => Math.max(m, Number(l.from)||0), 0);
+    levels.push({ id:'lvl'+(levels.length+1), name:'Новый уровень', from:maxFrom + 5000, add:0 });
+    RULES.bonusLevels = levels;
+    renderAdmin();
+    render();
+    toast('Уровень добавлен — задайте название и порог');
+    return;
+  }
+  if (act === 'admin-level-del'){
+    if ((RULES.bonusLevels || []).length <= 1){ toast('Хотя бы один уровень должен остаться'); return; }
+    const i = Number(el.dataset.index);
+    RULES.bonusLevels = (RULES.bonusLevels || []).filter((l, idx) => idx !== i);
+    renderAdmin();
+    render();
+    toast('Уровень убран');
+    return;
+  }
   if (act === 'admin-promo-create'){
     const code = admin.promoDraft.code.trim().toUpperCase();
     if (!code){ toast('Введите код промокода'); return; }
@@ -2948,6 +2999,23 @@ document.addEventListener('input', ev => {
     if (el.dataset.field === 'add') tier.add = Math.min(30, Math.max(0, Math.round(n)));
     syncBonusExample();
   }
+  if (el.dataset.act === 'admin-level'){
+    const level = (RULES.bonusLevels || [])[Number(el.dataset.index)];
+    if (!level) return;
+    if (el.dataset.field === 'name'){
+      const name = String(el.value || '').trim();
+      if (name) level.name = name.slice(0, 24);
+    }
+    if (el.dataset.field === 'from'){
+      const n = Number(el.value);
+      if (!isNaN(n)) level.from = Math.max(0, Math.round(n));
+    }
+    if (el.dataset.field === 'add'){
+      const n = Number(el.value);
+      if (!isNaN(n)) level.add = Math.min(30, Math.max(0, Math.round(n)));
+    }
+    syncBonusExample();
+  }
 });
 
 document.addEventListener('change', ev => {
@@ -2970,6 +3038,13 @@ document.addEventListener('change', ev => {
   if (el.dataset.act === 'admin-analytics-period'){
     admin.f.analytics.period = el.value;
     renderAdmin();
+    return;
+  }
+  if (el.dataset.act === 'admin-level'){
+    /* после правки порога уровни встают по сумме — по ней их и сравнивают */
+    RULES.bonusLevels = bonusLevelsSorted();
+    renderAdmin();
+    render();
     return;
   }
   if (el.dataset.act === 'admin-setting' && ['bonusDelivery','bonusPickup','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)){

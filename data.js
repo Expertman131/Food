@@ -208,6 +208,13 @@ const RULES = {
     { from: 1000, add: 1 },
     { from: 2000, add: 2 }
   ],
+  /* Уровни гостя: сумма выполненных заказов → надбавка к кэшбэку в п.п.
+     Пороги и названия задаются в панели («Маркетинг» → Бонусная система). */
+  bonusLevels: [
+    { id:'start', name:'Start', from:0,     add:0 },
+    { id:'plus',  name:'Plus',  from:10000, add:2 },
+    { id:'vip',   name:'VIP',   from:25000, add:5 }
+  ],
   bonusMaxPay: 30,      // максимум оплаты бонусами, % от суммы блюд после промокода
   bonusExpiryMonths: 12, // срок списания начисленных баллов, месяцев (0 — не сгорают)
   prepTime: '45–60 мин',
@@ -247,18 +254,18 @@ const bonusTierAdd = sum => {
   return tiers.length ? Number(tiers[0].add) || 0 : 0;
 };
 
-/* Итоговый процент кэшбэка для канала и суммы */
-const bonusPercent = (channel, sum) => {
+/* Итоговый процент кэшбэка для канала, суммы заказа и оборота гостя */
+const bonusPercent = (channel, sum, turnover) => {
   const ch = BONUS_CHANNELS.find(c => c.id === channel);
   if (!ch || !ch.key) return 0;
-  return bonusBasePercent(channel) + bonusTierAdd(sum);
+  return bonusBasePercent(channel) + bonusTierAdd(sum) + bonusLevelAdd(turnover);
 };
 
 /* Баллы к начислению: 1 балл = 1 ₽, от суммы блюд после промокода */
-const bonusEarnFor = (channel, sum) => {
+const bonusEarnFor = (channel, sum, turnover) => {
   if (!RULES.bonusEnabled) return 0;
   if (channel === 'table') return 0;      // заказ в зале идёт без аккаунта — начислять не на что
-  return Math.floor(Math.max(0, sum) * bonusPercent(channel, sum) / 100);
+  return Math.floor(Math.max(0, sum) * bonusPercent(channel, sum, turnover) / 100);
 };
 
 /* Текстом правила трат: «от 1 000 ₽ — +1 п.п., от 2 000 ₽ — +2 п.п.» */
@@ -269,6 +276,43 @@ const bonusRulesText = () => {
     .map(t => `от ${Number(t.from).toLocaleString('ru-RU').replace(/,/g,' ')} ₽ — +${Number(t.add)} п.п.`);
   return tiers.length ? tiers.join(', ') : 'порогов пока нет';
 };
+
+/* ------------------------------ уровни гостя ------------------------------
+   Уровень — это сумма выполненных заказов гостя. Он даёт надбавку к кэшбэку
+   в п.п. тем же способом, что и пороги трат: базовый процент канала + надбавка
+   за объём заказа + надбавка за уровень. */
+
+const bonusLevelsSorted = () => (RULES.bonusLevels || [])
+  .slice().sort((a,b) => (Number(a.from)||0) - (Number(b.from)||0));
+
+/* Уровень гостя по обороту: подходит самый высокий, чей порог пройден */
+const bonusLevelFor = turnover => {
+  const levels = bonusLevelsSorted();
+  if (!levels.length) return null;
+  const sum = Math.max(0, Number(turnover) || 0);
+  const fit = levels.filter(l => sum >= (Number(l.from)||0));
+  return fit.length ? fit[fit.length-1] : levels[0];
+};
+
+const bonusLevelAdd = turnover => {
+  const level = bonusLevelFor(turnover);
+  return level ? Math.max(0, Number(level.add)||0) : 0;
+};
+
+const bonusLevelName = turnover => (bonusLevelFor(turnover) || {}).name || '';
+
+/* Следующий уровень: до него ещё копить оборот */
+const bonusNextLevel = turnover => {
+  const sum = Math.max(0, Number(turnover) || 0);
+  return bonusLevelsSorted().find(l => (Number(l.from)||0) > sum) || null;
+};
+
+/* Текстом: «Start — от 0 ₽, Plus — от 10 000 ₽ (+2 п.п.)» */
+const bonusLevelsText = () => bonusLevelsSorted().map(l => {
+  const from = (Number(l.from)||0).toLocaleString('ru-RU').replace(/,/g,' ');
+  const add = Number(l.add)||0;
+  return `${esc(l.name)} — от ${from} ₽${add ? ` (+${add} п.п.)` : ''}`;
+}).join(', ') || 'уровней пока нет';
 
 const PROMOS = [
   { code: 'WASABI10', type: 'percent', value: 10, label: '−10% на заказ', min: 0, active: true },
