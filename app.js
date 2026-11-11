@@ -459,7 +459,7 @@ function buildSeedOrder(o){
     payment: deliveryType === 'table' ? 'table' : (rnd() > 0.5 ? 'card' : (rnd() > 0.35 ? 'sbp' : 'cash')),
     promo, source: deliveryType === 'table' ? 'qr' : 'app',
     customer, phone,
-    bonusEarn: deliveryType === 'table' ? 0 : Math.floor(Math.max(0, sub - discount) * RULES.bonusAccrual / 100)
+    bonusEarn: bonusEarnFor(deliveryType, sub - discount)
   };
 }
 
@@ -1128,19 +1128,23 @@ function scrCheckout(){
   <section class="section">
     <h2 class="h2" style="margin-bottom:var(--sp-14)">Адрес доставки</h2>
     ${addressBook()}
-    <div class="field" style="margin-top:var(--sp-16)">
+    <div class="map-box" id="mapDeliver" role="region" aria-label="Карта доставки"></div>
+    <div class="map-note">${icon('info')}<span>Светлый круг — зона доставки точки. Нажмите на карту, чтобы поставить точку вручную, если адрес не нашёлся.</span></div>
+    <div class="field" style="margin-top:var(--sp-14)">
       <label for="fAddr">Улица, дом, квартира</label>
       <input id="fAddr" data-act="f" data-field="address" value="${state.address}" placeholder="Улица, дом, квартира"
         autocomplete="street-address" autocapitalize="words" enterkeyhint="next"
         ${state.errors.address ? 'aria-invalid="true" aria-describedby="err-fAddr"' : ''}>
       ${state.errors.address ? `<p class="err" id="err-fAddr" role="alert">${state.errors.address}</p>` : ''}
     </div>
-    <div class="field">
+    <button class="btn-outline" data-act="geo-find">${icon('search')} Найти на карте</button>
+    ${geoStatusHtml()}
+    <div class="field" style="margin-top:var(--sp-14)">
       <label for="fComment">Комментарий (необязательно)</label>
       <textarea id="fComment" data-act="f" data-field="comment" placeholder="Подъезд, этаж, домофон, пожелания"
         autocapitalize="sentences" enterkeyhint="done">${state.comment}</textarea>
     </div>
-    <p class="order-addr">${icon('pin')} Доставит ${loc.name} · ${locStatusText(loc)}</p>
+    <p class="order-addr">${icon('pin')} ${geoDeliverLine()}</p>
   </section>`}
 
   ${table ? '' : `
@@ -1220,6 +1224,94 @@ function addressBook(){
   <button class="btn-outline" data-act="addr-add">${icon('plus')} Добавить адрес</button>`;
 }
 
+/* ------------------------- зона доставки по адресу ------------------------
+   Правда про адрес важнее удобства: если адрес вне зоны, приложение говорит
+   об этом прямо и предлагает самовывоз — молча пропустить заказ в другой
+   город нельзя, это дыра в доставке. */
+function geoDeliverLine(){
+  const loc = LOCATIONS.find(l => l.id === (geo.locId || state.locationId)) || LOCATIONS[0];
+  if (geoAddressChanged()) return 'Укажите адрес и найдите его на карте';
+  if (geo.status === 'outside') return 'По этому адресу доставки нет — доступен самовывоз';
+  return `Доставит ${loc.name} · ${locStatusText(loc)}`;
+}
+
+/* Адрес в поле отличается от того, который проверяли: показывать старый
+   ответ зоны было бы враньём, поэтому сначала просим найти адрес заново. */
+const geoAddressChanged = () => geo.status !== 'idle' && (state.address || '').trim() !== (geo.checkedAddress || '').trim();
+
+function geoStatusHtml(){
+  if (geoAddressChanged()) return `<p class="muted small" style="margin-top:var(--sp-10)">Адрес изменился — нажмите «Найти на карте», чтобы проверить зону доставки.</p>`;
+  if (geo.status === 'searching') return `<p class="muted small" style="margin-top:var(--sp-10)">Ищем адрес…</p>`;
+  if (geo.status === 'failed') return `<p class="err" role="alert" style="margin-top:var(--sp-10)">Не нашли этот адрес автоматически. Поставьте точку на карте или напишите адрес подробнее.</p>`;
+  if (geo.status === 'outside'){
+    const n = geo.nearest;
+    return `<div class="notice is-warn" style="margin-top:var(--sp-12)">${icon('info')}<span>
+      <b>По этому адресу доставки нет.</b>${n ? ` Ближайшая точка — «${esc(n.loc.name)}», ${geoFormatKm(n.km)} от адреса.` : ''}
+      Доступен самовывоз.</span>
+      <button class="btn-outline btn-sm" data-act="geo-to-pickup">Выбрать самовывоз</button></div>`;
+  }
+  if (geo.status === 'found'){
+    const l = LOCATIONS.find(x => x.id === geo.locId);
+    if (!l) return '';
+    return `<div class="notice" style="margin-top:var(--sp-12)">${icon('check')}<span>
+      Доставляем из «${esc(l.name)}» — ${geoFormatKm(geo.km)} от ресторана. ${esc(l.delivery)}.</span></div>`;
+  }
+  return '';
+}
+
+/* Ищет адрес и определяет зону. Точка могла прийти из карты — тогда ищем зону сразу. */
+function geoApply(point){
+  geo.point = point;
+  const zone = geoZoneFor(point.lat, point.lng);
+  if (zone){
+    geo.status = 'found';
+    geo.locId = zone.loc.id;
+    geo.km = zone.km;
+    state.locationId = zone.loc.id;
+    geo.nearest = null;
+  } else {
+    geo.status = 'outside';
+    geo.locId = null;
+    geo.nearest = geoNearest(point.lat, point.lng);
+  }
+}
+
+async function geoCheckAddress(text){
+  geo.status = 'searching';
+  geo.checkedAddress = text;
+  render();
+  const hit = await geoLookup(text);
+  if (!hit){
+    geo.status = 'failed';
+    geo.point = null;
+    geo.locId = null;
+    render();
+    return;
+  }
+  geoApply(hit);
+  render();
+}
+
+/* Карта ставится после каждой перерисовки: контейнер пересоздаётся вместе с экраном */
+function mountGeo(){
+  const el = $('#mapDeliver');
+  if (!el) return;
+  const map = geoMount(el);
+  if (!map) return;
+  const saved = state.addresses.map(a => ({ label:a.label, address:a.address, point: geo.cache.get(a.address.trim().toLowerCase()) }));
+  geoDraw(map, { point: geo.point, locId: geo.locId, saved });
+  geoPickByClick(map, p => { geoApply(p); render(); });
+  saved.forEach(a => {
+    if (a.point) return;
+    geoLookup(a.address).then(hit => {
+      if (!hit) return;
+      geo.cache.set(a.address.trim().toLowerCase(), hit);
+      const m = geo.maps.get('mapDeliver');
+      if (m) geoDraw(m, { point: geo.point, locId: geo.locId, saved: state.addresses.map(x => ({ label:x.label, address:x.address, point: geo.cache.get(x.address.trim().toLowerCase()) })) });
+    });
+  });
+}
+
 function payMethodRow(id, ico, name, note){
   return `
   <div class="pay-row ${state.payMethod===id?'is-on':''}" data-act="pay-method" data-id="${id}" role="button" tabindex="0" aria-pressed="${state.payMethod===id}">
@@ -1271,8 +1363,10 @@ function scrPayment(){
     <div class="section-head"><h2 class="h2">Бонусы «Васаби»</h2><span class="count">${bonusBalance()} ${plural(bonusBalance(),'балл','балла','баллов')}</span></div>
     <div class="card">
       ${RULES.bonusEnabled ? `
-        <p class="small soft">1 балл = 1 ₽. Кэшбэк ${RULES.bonusAccrual}% начислим после выполнения заказа.${bonusExpiryMonths() ? ` Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>
-        ${state.deliveryType === 'table' ? '<p class="muted small" style="margin-top:var(--sp-12)">За заказ к столу без аккаунта баллы не начисляются и не списываются.</p>' : `
+        <p class="small soft">1 балл = 1 ₽. ${state.deliveryType === 'table'
+          ? 'За заказ к столу без аккаунта баллы не начисляются.'
+          : `Кэшбэк ${bonusPercent(state.deliveryType, t.sub - t.discount)}% начислим после выполнения заказа.`}${bonusExpiryMonths() ? ` Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')}.` : ''}</p>
+        ${state.deliveryType === 'table' ? '' : `
           <div class="pay-row ${t.bonusUse?'is-on':''}" ${t.bonusAvailable?'data-act="bonus-toggle" role="button" tabindex="0"':''} aria-pressed="${t.bonusUse>0}" style="margin-top:var(--sp-12)">
             <div class="pay-icon">${icon('gift')}</div>
             <div class="grow">
@@ -1488,7 +1582,16 @@ function scrProfile(){
       <p class="muted small" style="margin-top:var(--sp-4)">Кэшбэк с заказов · 1 балл = 1 ₽</p>
       <div class="bonus-balance"><b>${balance}</b><span>${plural(balance,'балл','балла','баллов')}</span></div>
       ${RULES.bonusEnabled
-        ? `<p class="muted small" style="margin-top:var(--sp-10)">Возвращаем ${RULES.bonusAccrual}% от суммы блюд после промокода. Баллами можно оплатить до ${RULES.bonusMaxPay}% следующего заказа. ${bonusExpiryMonths() ? `Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')} после начисления.` : 'Баллы не сгорают.'}</p>`
+        ? `<div class="bonus-channels">
+            ${BONUS_CHANNELS.map(ch => `
+              <div class="bonus-channel">
+                <div class="bc-val">${ch.key ? bonusBasePercent(ch.id) + '%' : '—'}</div>
+                <div class="bc-label">${ch.label}</div>
+              </div>`).join('')}
+          </div>
+          <p class="muted small" style="margin-top:var(--sp-10)">Базовый кэшбэк по каналу. Заказ в зале идёт без аккаунта — по нему баллы не начисляются.</p>
+          <p class="muted small" style="margin-top:var(--sp-6)"><b>Правила трат:</b> ${bonusRulesText()}. То есть доставка от 2 000 ₽ даёт ${bonusPercent('delivery', 2000)}%, а заказ до 1 000 ₽ — ${bonusPercent('delivery', 999)}%.</p>
+          <p class="muted small" style="margin-top:var(--sp-10)">Баллами можно оплатить до ${RULES.bonusMaxPay}% следующего заказа. ${bonusExpiryMonths() ? `Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')} после начисления.` : 'Баллы не сгорают.'}</p>`
         : '<p class="muted small" style="margin-top:var(--sp-10)">Программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
       <div class="bonus-history">
         ${history.length ? history.slice(0,3).map(entry => `
@@ -1631,6 +1734,9 @@ function scrRestaurant(){
         <div class="order-addr" style="margin-top:var(--sp-10)">${icon('pin')} ${l.address}</div>
         <div class="muted small" style="margin-top:var(--sp-8)">${l.delivery}</div>
         <p class="small" style="margin-top:var(--sp-8);color:${locIsOpen(l) ? 'var(--lime)' : 'var(--muted)'}">${locStatusText(l)}</p>
+        ${l.service === 'delivery' && l.zoneKm > 0
+          ? `<p class="muted small" style="margin-top:var(--sp-6)">${icon('info')} Доставляем в ${geoFormatKm(l.zoneKm)} от точки. Адрес проверим на карте при оформлении.</p>`
+          : ''}
       </div>
     </section>`).join('')}
   <section class="section">
@@ -1829,6 +1935,10 @@ function render(){
   lastScreen = scr;
   if (window.scrollY !== keepWinY) window.scrollTo(0, keepWinY);
   scheduleStatus();
+  if (scr === 'checkout' && state.deliveryType === 'delivery'){
+    mountGeo();
+    if (geo.status === 'idle' && state.address.trim()) geoCheckAddress(state.address);
+  }
 }
 
 function scheduleStatus(){
@@ -2093,6 +2203,17 @@ const ACTIONS = {
     state.addressId = a.id;
     state.address = a.address;
     render();
+    if (state.deliveryType === 'delivery') geoCheckAddress(a.address);
+  },
+  'geo-find': () => {
+    const v = (state.address || '').trim();
+    if (!v){ toast('Введите адрес'); return; }
+    geoCheckAddress(v);
+  },
+  'geo-to-pickup': () => {
+    state.deliveryType = 'pickup';
+    toast('Переключили на самовывоз — доставка по этому адресу недоступна');
+    render();
   },
   'addr-add': () => {
     const v = (state.newAddress || '').trim();
@@ -2105,6 +2226,7 @@ const ACTIONS = {
     delete state.errors.newAddress;
     toast('Адрес сохранён');
     render();
+    if (state.deliveryType === 'delivery') geoCheckAddress(v);
   },
   'addr-delete': (el) => {
     state.addresses = state.addresses.filter(a => a.id !== el.dataset.id);
@@ -2124,6 +2246,7 @@ const ACTIONS = {
       if (!state.user.name.trim()) errs.name = 'Укажите имя';
       if (!/^\+?\d{10,15}$/.test(state.user.phone.replace(/\D/g,'').replace(/^8/,'7'))) errs.phone = 'Проверьте номер телефона';
       if (!state.address.trim()) errs.address = 'Укажите адрес';
+      else if (geo.status === 'outside') errs.address = 'По этому адресу доставки нет — выберите самовывоз или другой адрес';
     }
     if (!table && state.timeMode === 'slot' && !state.slot) errs.slot = 'Выберите время доставки';
     const loc = LOCATIONS.find(l => l.id === state.locationId) || LOCATIONS[0];
@@ -2166,7 +2289,7 @@ const ACTIONS = {
         id:'o'+Date.now(), no: nextOrderNo(), ts: Date.now(), date: nowRu(),
         items: cartLines().map(l => ({ dishId:l.dishId, name:dishById(l.dishId).name, qty:l.qty, price:lineUnit(l), mods:l.mods })),
         sub:t.sub, delivery:t.delivery, discount:t.discount, bonus:t.bonusUse, total:t.total,
-        bonusEarn:RULES.bonusEnabled && state.deliveryType !== 'table' ? Math.floor(Math.max(0, t.sub - t.discount) * RULES.bonusAccrual / 100) : 0,
+        bonusEarn: bonusEarnFor(state.deliveryType, t.sub - t.discount),
         status:'new',
         deliveryType: state.deliveryType,
         locationId: state.deliveryType === 'table' ? state.table.locId : state.locationId,

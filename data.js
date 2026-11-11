@@ -198,7 +198,16 @@ const RULES = {
   freeDeliveryFrom: 1500,
   minOrder: 300,
   bonusEnabled: true,
-  bonusAccrual: 5,      // % кэшбэка от блюд после промокода, без доставки
+  /* Кэшбэк по правилам трат: базовый процент зависит от способа получения
+     (доставка или самовывоз), а надбавка даётся за объём заказа —
+     пороги задаются в панели. Заказ к столу из QR-меню идёт без аккаунта,
+     поэтому по нему кэшбэк не начисляется. */
+  bonusAccrualDelivery: 7,   // % при доставке
+  bonusAccrualPickup: 3,     // % при самовывозе
+  bonusSpendTiers: [         // надбавка за сумму заказа: от 1 000 ₽ +1 п.п., от 2 000 ₽ +2 п.п.
+    { from: 1000, add: 1 },
+    { from: 2000, add: 2 }
+  ],
   bonusMaxPay: 30,      // максимум оплаты бонусами, % от суммы блюд после промокода
   bonusExpiryMonths: 12, // срок списания начисленных баллов, месяцев (0 — не сгорают)
   prepTime: '45–60 мин',
@@ -208,6 +217,57 @@ const RULES = {
   slotStep: 30,         // шаг слотов времени, минут
   lastOrderSlot: 60,    // за сколько минут до закрытия последний слот недоступен
   featuredMax: 6        // сколько блюд помещается в ленту «Попробуйте любимое» на главной
+};
+
+/* ------------------------------- кэшбэк ---------------------------------
+   Проценты живут в RULES, а правило сбора — здесь, чтобы админка и
+   приложение гостя считали одинаково.
+
+   Канал: доставка, самовывоз или заказ в зале. У каждого свой базовый процент.
+   Правило трат: надбавка к проценту за объём заказа — пороги берутся
+   из RULES.bonusSpendTiers, действует самый высокий подходящий порог. */
+
+const BONUS_CHANNELS = [
+  { id:'delivery', label:'Доставка',       key:'bonusAccrualDelivery' },
+  { id:'pickup',  label:'Самовывоз',      key:'bonusAccrualPickup' },
+  { id:'table',   label:'Заказ в зале',   key:null }
+];
+
+const bonusBasePercent = channel => {
+  const ch = BONUS_CHANNELS.find(c => c.id === channel);
+  if (!ch || !ch.key) return 0;
+  return Number(RULES[ch.key]) || 0;
+};
+
+/* Надбавка за объём заказа: действует самый высокий порог, который гость перешагнул */
+const bonusTierAdd = sum => {
+  const tiers = (RULES.bonusSpendTiers || [])
+    .filter(t => Number(t.from) > 0 && sum >= Number(t.from))
+    .sort((a,b) => Number(b.from) - Number(a.from));
+  return tiers.length ? Number(tiers[0].add) || 0 : 0;
+};
+
+/* Итоговый процент кэшбэка для канала и суммы */
+const bonusPercent = (channel, sum) => {
+  const ch = BONUS_CHANNELS.find(c => c.id === channel);
+  if (!ch || !ch.key) return 0;
+  return bonusBasePercent(channel) + bonusTierAdd(sum);
+};
+
+/* Баллы к начислению: 1 балл = 1 ₽, от суммы блюд после промокода */
+const bonusEarnFor = (channel, sum) => {
+  if (!RULES.bonusEnabled) return 0;
+  if (channel === 'table') return 0;      // заказ в зале идёт без аккаунта — начислять не на что
+  return Math.floor(Math.max(0, sum) * bonusPercent(channel, sum) / 100);
+};
+
+/* Текстом: «7% при доставке, +2 п.п. от 2 000 ₽» */
+const bonusRulesText = () => {
+  const tiers = (RULES.bonusSpendTiers || [])
+    .slice()
+    .sort((a,b) => Number(a.from) - Number(b.from))
+    .map(t => `от ${Number(t.from).toLocaleString('ru-RU').replace(/,/g,' ')} ₽ — +${Number(t.add)} п.п.`);
+  return tiers.length ? tiers.join(', ') : 'порогов пока нет';
 };
 
 const PROMOS = [
@@ -232,7 +292,7 @@ const BANNERS = [
     id: 'b-delivery', kind: 'promo', code: 'DOSTAVKA', active: true,
     tag: 'Доставка 0 ₽', img: 'assets/california.jpg',
     title: 'Бесплатная доставка от 1 500 ₽.',
-    sub: 'В пределах 3 км от ресторана', cta: 'Применить код'
+    sub: 'Зона доставки — до 2,5 км от точки', cta: 'Применить код'
   },
   {
     id: 'b-set200', kind: 'promo', code: 'SETHI', active: true,
@@ -299,10 +359,13 @@ const statusLabel = o => (o.deliveryType === 'table' && o.status === 'done' ? '�
 /* Статусы, при которых заказ не готовится — клиент видит отдельный экран */
 const DEAD_STATUSES = ['cancelled', 'rejected'];
 
+/* Точки ресторана. lat/lng — координаты для карты, zoneKm — радиус зоны
+   доставки в километрах: до этого расстояния от точки мы доезжаем.
+   zoneKm = 0 — доставки нет, только самовывоз. */
 const LOCATIONS = [
-  { id: 'l1', name: 'Васаби на Ташкентской', address: 'Москва, ул. Ташкентская, 19', hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00', service:'delivery' },
-  { id: 'l2', name: 'Васаби на Мичурина',    address: 'Москва, ул. Мичурина, 32',    hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00', service:'delivery' },
-  { id: 'l3', name: 'Васаби на Патриарших',  address: 'Москва, Патриаршие пруды, 7', hours: '12:00 — 23:00', delivery: 'Самовывоз от 20 мин', open: '12:00', close: '23:00', service:'pickup' }
+  { id: 'l1', name: 'Васаби на Ташкентской', address: 'Москва, ул. Ташкентская, 19', hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00', service:'delivery', lat: 55.702075, lng: 37.814361, zoneKm: 2.5 },
+  { id: 'l2', name: 'Васаби на Бауманской',  address: 'Москва, ул. Бауманская, 53, стр. 5', hours: '11:00 — 23:00', delivery: 'Доставка от 199 ₽', open: '11:00', close: '23:00', service:'delivery', lat: 55.767929, lng: 37.681186, zoneKm: 2.5 },
+  { id: 'l3', name: 'Васаби на Патриарших',  address: 'Москва, Патриаршие пруды, 7', hours: '12:00 — 23:00', delivery: 'Самовывоз от 20 мин', open: '12:00', close: '23:00', service:'pickup', lat: 55.764348, lng: 37.591875, zoneKm: 0 }
 ];
 
 const STAFF_ROLES = {

@@ -25,7 +25,7 @@ const admin = {
     id:null, kind:'promo', tag:'', title:'', sub:'', cta:'Применить код',
     img:'assets/sashimi.jpg', defaultImg:'assets/sashimi.jpg', code:'', dish:'d-set-w', screen:'profile'
   },
-  locationDraft: { id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' },
+  locationDraft: { id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery', zoneKm:2.5 },
   staffDraft: { name:'', phone:'', role:'operator' },
   /* Фильтры разделов. Одно поле — одно значение, мультивыбор — массив.
      Внутри группы значения OR, между группами AND. */
@@ -53,7 +53,8 @@ const admin = {
     freeFrom: RULES.freeDeliveryFrom,
     minOrder: RULES.minOrder,
     bonusEnabled: RULES.bonusEnabled,
-    bonusPercent: RULES.bonusAccrual,
+    bonusDelivery: RULES.bonusAccrualDelivery,
+    bonusPickup: RULES.bonusAccrualPickup,
     bonusMaxPay: RULES.bonusMaxPay,
     bonusExpiryMonths: RULES.bonusExpiryMonths,
     prepTime: RULES.prepTime,
@@ -83,7 +84,7 @@ const emptyBannerDraft = () => ({
   img:'assets/sashimi.jpg', defaultImg:'assets/sashimi.jpg', code:'', dish:'d-set-w', screen:'profile'
 });
 
-const emptyLocationDraft = () => ({ id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' });
+const emptyLocationDraft = () => ({ id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery', zoneKm:2.5 });
 const roleLabel = id => (STAFF_ROLES[id] || STAFF_ROLES.operator).label;
 
 const clientOrigin = c => (c.sources || [c.source || 'Демо']).join(' + ');
@@ -1324,7 +1325,9 @@ const pushAudienceLabel = id => (PUSH_AUDIENCES.find(a => a.id === id) || PUSH_A
 
 function bonusExampleText(){
   const months = Math.max(0, Number(RULES.bonusExpiryMonths) || 0);
-  return `Пример: при заказе блюд на 1 000 ₽ гость получит ${Math.floor(1000*RULES.bonusAccrual/100)} баллов после выполнения и сможет списать до ${Math.floor(1000*RULES.bonusMaxPay/100)} баллов.` +
+  const delivery = bonusPercent('delivery', 1000);
+  const pickup = bonusPercent('pickup', 1000);
+  return `Пример: при заказе блюд на 1 000 ₽ гость получит ${Math.floor(1000*delivery/100)} баллов при доставке и ${Math.floor(1000*pickup/100)} при самовывозе, а сможет списать до ${Math.floor(1000*RULES.bonusMaxPay/100)} баллов.` +
     (months ? ` Баллы сгорят через ${months} ${plural(months,'месяц','месяца','месяцев')} после начисления.` : ' Баллы не сгорают.');
 }
 
@@ -1355,7 +1358,7 @@ function adminMarketing(){
   return `
   <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18)">
     <div class="a-stat"><div class="lbl">Активных промокодов</div><div class="val lime">${activePromos().length}</div><div class="delta">всего в базе: ${PROMOS.length}</div></div>
-    <div class="a-stat"><div class="lbl">Начисление бонусов</div><div class="val">${admin.settings.bonusPercent}%</div><div class="delta">от суммы заказа</div></div>
+    <div class="a-stat"><div class="lbl">Начисление бонусов</div><div class="val">${admin.settings.bonusDelivery}% / ${admin.settings.bonusPickup}%</div><div class="delta">доставка / самовывоз</div></div>
     <div class="a-stat"><div class="lbl">Рассылок в демо-журнале</div><div class="val">${admin.pushLog.length}</div><div class="delta">реальная отправка не подключена</div></div>
     <div class="a-stat"><div class="lbl">Баннеров на главной</div><div class="val">${activeBanners().length}</div><div class="delta">всего заведено: ${BANNERS.length}</div></div>
   </div>
@@ -1372,8 +1375,27 @@ function adminMarketing(){
       <span>Начислять и списывать бонусы</span><span class="opt-toggle ${s.bonusEnabled?'is-on':''}" aria-hidden="true"></span>
     </button>
     <div class="a-grid a-grid-3" style="gap:var(--sp-10);margin-top:var(--sp-12)">
-      <label class="a-labeled"><span>Кэшбэк с заказа, %</span><input class="input-plain" id="bonusPercent" type="number" min="0" max="50" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusPercent" value="${s.bonusPercent}" ${s.bonusEnabled?'':'disabled'}></label>
+      <label class="a-labeled"><span>Кэшбэк при доставке, %</span><input class="input-plain" id="bonusDelivery" type="number" min="0" max="50" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusDelivery" value="${s.bonusDelivery}" ${s.bonusEnabled?'':'disabled'}></label>
+      <label class="a-labeled"><span>Кэшбэк при самовывозе, %</span><input class="input-plain" id="bonusPickup" type="number" min="0" max="50" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusPickup" value="${s.bonusPickup}" ${s.bonusEnabled?'':'disabled'}></label>
       <label class="a-labeled"><span>Максимум оплаты баллами, %</span><input class="input-plain" id="bonusMaxPay" type="number" min="0" max="100" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusMaxPay" value="${s.bonusMaxPay}" ${s.bonusEnabled?'':'disabled'}></label>
+    </div>
+    <div class="a-form-note" style="margin-top:var(--sp-6)">Заказ из QR-меню в зале идёт без аккаунта — по нему баллы не начисляются, отдельной настройки для него нет.</div>
+
+    <h3 style="margin-top:var(--sp-18)">Правила трат</h3>
+    <p class="a-lead-sm" style="margin-top:var(--sp-6)">Надбавка к кэшбэку за объём заказа. Если сумма перешагнула порог — действует самая высокая подходящая надбавка.</p>
+    <div style="margin-top:var(--sp-12)">
+      ${(RULES.bonusSpendTiers || []).map((t, i) => `
+        <div class="a-row" style="gap:var(--sp-10);align-items:flex-end;margin-bottom:var(--sp-8)">
+          <label class="a-labeled" style="flex:1"><span>От суммы, ₽</span><input class="input-plain" type="number" min="0" step="100" inputmode="numeric" data-act="admin-tier" data-index="${i}" data-field="from" value="${Number(t.from)||0}" ${s.bonusEnabled?'':'disabled'}></label>
+          <label class="a-labeled" style="width:150px"><span>Надбавка, п.п.</span><input class="input-plain" type="number" min="0" max="30" step="1" inputmode="numeric" data-act="admin-tier" data-index="${i}" data-field="add" value="${Number(t.add)||0}" ${s.bonusEnabled?'':'disabled'}></label>
+          <button class="a-btn" data-act="admin-tier-del" data-index="${i}" aria-label="Убрать порог ${i+1}">${icon('trash')}</button>
+        </div>`).join('')}
+      <div class="a-row" style="gap:var(--sp-10);margin-top:var(--sp-4)">
+        <button class="a-btn" data-act="admin-tier-add">+ Добавить порог</button>
+      </div>
+    </div>
+
+    <div class="a-grid a-grid-2" style="gap:var(--sp-10);margin-top:var(--sp-16)">
       <label class="a-labeled"><span>Срок списания баллов, месяцев</span><input class="input-plain" id="bonusExpiryMonths" type="number" min="0" max="60" step="1" inputmode="numeric" data-act="admin-setting" data-key="bonusExpiryMonths" value="${s.bonusExpiryMonths}" ${s.bonusEnabled?'':'disabled'}></label>
     </div>
     <p class="a-form-note" id="bonusExample">${bonusExampleText()}</p>
@@ -2036,6 +2058,9 @@ function adminSettings(){
               <div style="font-weight:600">${esc(loc.name)}</div>
               <div class="muted" style="font-size:var(--fs-12)">${esc(loc.address)} · ${loc.hours}</div>
               <div class="a-pill ${loc.service==='pickup'?'olive':'lime'}" style="margin-top:var(--sp-8)">${esc(loc.delivery)}</div>
+              ${loc.service === 'delivery'
+                ? `<div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-6)">Зона доставки: ${geoFormatKm(Number(loc.zoneKm) || 0)} от точки${geoHasCoords(loc) ? '' : ' · координаты не заданы, зона не работает'}</div>`
+                : '<div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-6)">Только самовывоз — зоны доставки нет</div>'}
             </div>
             <button class="a-btn" data-act="admin-location-edit" data-id="${loc.id}" aria-label="Изменить ${esc(loc.name)}">${icon('edit')}</button>
           </div>`).join('')}
@@ -2048,6 +2073,7 @@ function adminSettings(){
             <div class="field"><label for="location-close">Закрытие</label><input class="input-plain" id="location-close" type="time" data-act="admin-location-draft" data-field="close" value="${l.close}"></div>
           </div>
           <div class="field"><label for="location-service">Как работает точка</label><select class="input-plain" id="location-service" data-act="admin-location-draft" data-field="service"><option value="delivery" ${l.service==='delivery'?'selected':''}>Доставка и самовывоз</option><option value="pickup" ${l.service==='pickup'?'selected':''}>Только самовывоз</option></select></div>
+          <div class="field"><label for="location-zone">Зона доставки, км</label><input class="input-plain" id="location-zone" type="number" min="0" max="15" step="0.5" inputmode="decimal" data-act="admin-location-draft" data-field="zoneKm" value="${l.service==='pickup' ? 0 : (Number(l.zoneKm) || 0)}" ${l.service==='pickup'?'disabled':''}><p class="a-form-note" id="location-zone-note">${l.service==='pickup' ? 'У точки только самовывоз — зона доставки не используется.' : 'Круг доставки вокруг точки. Гость с адресом за пределами круга увидит, что доставки нет, и сможет выбрать самовывоз. 0 км — доставки нет, только самовывоз. Координаты новой точки определяются по адресу автоматически при сохранении.'}</p></div>
           <div class="a-row"><button class="a-btn primary" data-act="admin-location-save">${l.id ? 'Сохранить точку' : 'Добавить точку'}</button>${l.id ? '<button class="a-btn" data-act="admin-location-cancel">Отмена</button>' : ''}</div>
         </div>
       </div>
@@ -2490,7 +2516,7 @@ document.addEventListener('click', ev => {
   if (act === 'admin-location-edit'){
     const loc = LOCATIONS.find(x => x.id === el.dataset.id);
     if (!loc) return;
-    admin.locationDraft = { id:loc.id, name:loc.name, address:loc.address, open:loc.open, close:loc.close, service:loc.service || 'delivery' };
+    admin.locationDraft = { id:loc.id, name:loc.name, address:loc.address, open:loc.open, close:loc.close, service:loc.service || 'delivery', zoneKm:Number(loc.zoneKm) || 0 };
     renderAdmin();
     const input = document.getElementById('location-name');
     if (input){ input.scrollIntoView({ block:'center', behavior:'smooth' }); input.focus({ preventScroll:true }); }
@@ -2507,8 +2533,9 @@ document.addEventListener('click', ev => {
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(dr.open) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(dr.close) || hm(dr.close) <= hm(dr.open)){
       toast('Время закрытия должно быть позже открытия'); return;
     }
+    const zoneKm = dr.service === 'pickup' ? 0 : Math.min(15, Math.max(0, Number(dr.zoneKm) || 0));
     const value = {
-      name, address, open:dr.open, close:dr.close, service:dr.service,
+      name, address, open:dr.open, close:dr.close, service:dr.service, zoneKm,
       hours:dr.open + ' — ' + dr.close,
       delivery:dr.service === 'pickup' ? 'Самовывоз от 20 мин' : 'Доставка от ' + fmt(RULES.deliveryPrice)
     };
@@ -2519,6 +2546,17 @@ document.addEventListener('click', ev => {
     renderAdmin();
     render();
     toast(existing ? 'Точка сохранена — гость видит изменения' : 'Точка добавлена в самовывоз и QR-меню');
+    /* Координаты новой точки определяем по адресу — иначе зона доставки не сработает */
+    const saved = existing || LOCATIONS[LOCATIONS.length - 1];
+    if (!geoHasCoords(saved)){
+      geoLookup(address).then(hit => {
+        if (!hit){ toast('Адрес не нашёлся на карте — уточните его, иначе зона доставки не работает'); return; }
+        saved.lat = hit.lat; saved.lng = hit.lng;
+        renderAdmin();
+        render();
+        toast('Точка поставлена на карте по адресу');
+      });
+    }
   }
   if (act === 'admin-staff-add'){
     const dr = readDraftFields('staffForm', 'admin-staff-draft', admin.staffDraft);
@@ -2758,6 +2796,22 @@ document.addEventListener('click', ev => {
     render();
     toast('Настройки сохранены — приложение гостя обновлено');
   }
+  if (act === 'admin-tier-add'){
+    RULES.bonusSpendTiers = (RULES.bonusSpendTiers || []).slice();
+    RULES.bonusSpendTiers.push({ from: 3000, add: 3 });
+    renderAdmin();
+    render();
+    toast('Порог добавлен — гостю покажут новый процент');
+    return;
+  }
+  if (act === 'admin-tier-del'){
+    const i = Number(el.dataset.index);
+    RULES.bonusSpendTiers = (RULES.bonusSpendTiers || []).filter((t, idx) => idx !== i);
+    renderAdmin();
+    render();
+    toast('Порог убран');
+    return;
+  }
   if (act === 'admin-promo-create'){
     const code = admin.promoDraft.code.trim().toUpperCase();
     if (!code){ toast('Введите код промокода'); return; }
@@ -2814,7 +2868,23 @@ document.addEventListener('input', ev => {
     if (el.id === 'dish-badge') syncDishBadgePresets();
   }
   if (el.dataset.act === 'admin-banner-draft'){ admin.bannerDraft[el.dataset.field] = el.value; }
-  if (el.dataset.act === 'admin-location-draft'){ admin.locationDraft[el.dataset.field] = el.value; }
+  if (el.dataset.act === 'admin-location-draft'){
+    admin.locationDraft[el.dataset.field] = el.value;
+    /* У точки «только самовывоз» зоны нет: поле гасим, чтобы владелец не вводил
+       радиус, который всё равно не применится. */
+    if (el.dataset.field === 'service'){
+      const zi = document.getElementById('location-zone');
+      const note = document.getElementById('location-zone-note');
+      const pickup = el.value === 'pickup';
+      if (zi){
+        zi.disabled = pickup;
+        zi.value = pickup ? 0 : (Number(admin.locationDraft.zoneKm) || 0);
+      }
+      if (note) note.textContent = pickup
+        ? 'У точки только самовывоз — зона доставки не используется.'
+        : 'Круг доставки вокруг точки. Гость с адресом за пределами круга увидит, что доставки нет, и сможет выбрать самовывоз. 0 км — доставки нет, только самовывоз. Координаты новой точки определяются по адресу автоматически при сохранении.';
+    }
+  }
   if (el.dataset.act === 'admin-staff-draft'){ admin.staffDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-bonus-amount'){ admin.bonusAmount = el.value; }
   if (el.dataset.act === 'admin-filter-search'){
@@ -2861,12 +2931,22 @@ document.addEventListener('input', ev => {
       if (el.dataset.key === 'deliveryPrice') RULES.deliveryPrice = n;
       if (el.dataset.key === 'freeFrom') RULES.freeDeliveryFrom = n;
       if (el.dataset.key === 'minOrder') RULES.minOrder = n;
-      if (el.dataset.key === 'bonusPercent') RULES.bonusAccrual = Math.min(50, Math.max(0, n));
+      if (el.dataset.key === 'bonusDelivery') RULES.bonusAccrualDelivery = Math.min(50, Math.max(0, n));
+      if (el.dataset.key === 'bonusPickup') RULES.bonusAccrualPickup = Math.min(50, Math.max(0, n));
       if (el.dataset.key === 'bonusMaxPay') RULES.bonusMaxPay = Math.min(100, Math.max(0, n));
       if (el.dataset.key === 'bonusExpiryMonths') RULES.bonusExpiryMonths = Math.min(60, Math.max(0, Math.round(n)));
-      if (el.dataset.key === 'bonusPercent' || el.dataset.key === 'bonusMaxPay' || el.dataset.key === 'bonusExpiryMonths') syncBonusExample();
+      if (['bonusDelivery','bonusPickup','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)) syncBonusExample();
     }
     if (el.dataset.key === 'prepTime') RULES.prepTime = el.value;
+  }
+  if (el.dataset.act === 'admin-tier'){
+    const tier = (RULES.bonusSpendTiers || [])[Number(el.dataset.index)];
+    if (!tier) return;
+    const n = Number(el.value);
+    if (isNaN(n)) return;
+    if (el.dataset.field === 'from') tier.from = Math.max(0, Math.round(n));
+    if (el.dataset.field === 'add') tier.add = Math.min(30, Math.max(0, Math.round(n)));
+    syncBonusExample();
   }
 });
 
@@ -2892,12 +2972,15 @@ document.addEventListener('change', ev => {
     renderAdmin();
     return;
   }
-  if (el.dataset.act === 'admin-setting' && ['bonusPercent','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)){
+  if (el.dataset.act === 'admin-setting' && ['bonusDelivery','bonusPickup','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)){
     const key = el.dataset.key;
-    const max = key === 'bonusPercent' ? 50 : (key === 'bonusMaxPay' ? 100 : 60);
+    const max = key === 'bonusMaxPay' ? 100 : (key === 'bonusExpiryMonths' ? 60 : 50);
     const value = Math.min(max, Math.max(0, Math.round(Number(el.value) || 0)));
     admin.settings[key] = value;
-    RULES[key === 'bonusPercent' ? 'bonusAccrual' : (key === 'bonusMaxPay' ? 'bonusMaxPay' : 'bonusExpiryMonths')] = value;
+    RULES[key === 'bonusDelivery' ? 'bonusAccrualDelivery'
+         : key === 'bonusPickup' ? 'bonusAccrualPickup'
+         : key === 'bonusMaxPay' ? 'bonusMaxPay'
+         : 'bonusExpiryMonths'] = value;
     state.bonusUse = 0;
     renderAdmin();
     render();
