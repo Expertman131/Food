@@ -1722,11 +1722,17 @@ function renderInspector(){
 
 let toastTimer = null;
 function toast(msg){
-  const el = $('#toast');
-  el.textContent = msg;
-  el.classList.add('is-on');
+  ['toast','adminToast'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('is-on');
+  });
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('is-on'), 2400);
+  toastTimer = setTimeout(() => ['toast','adminToast'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('is-on');
+  }), 2400);
 }
 
 /* ------------------------------- действия -------------------------------- */

@@ -204,6 +204,9 @@ body[data-mode="admin"] .tb-size{display:none;}
   opacity:0;transform:translateY(10px);pointer-events:none;transition:.24s ease;
 }
 .toast.is-on{opacity:1;transform:translateY(0);}
+/* тост админки: рамка телефона скрыта, поэтому у панели свой, поверх окна */
+.admin-toast{position:fixed;left:50%;right:auto;bottom:24px;transform:translate(-50%,12px);z-index:60;}
+.admin-toast.is-on{transform:translate(-50%,0);}
 
 /* ---------- нижняя навигация ---------- */
 .tabbar{
@@ -798,6 +801,10 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .a-table td{padding:var(--sp-12) var(--sp-10);border-bottom:1px solid var(--line-soft);vertical-align:middle;}
 .a-table tr:last-child td{border-bottom:0;}
+/* строка начисления баллов под гостем — та же идея, что «Детали» у блюд */
+.a-bonus-tr td{padding:var(--sp-12) var(--sp-12);background:var(--surface-2);}
+.a-bonus-box{display:flex;align-items:center;gap:var(--sp-8);flex-wrap:wrap;}
+.a-bonus-box .input-plain{width:110px;flex:none;}
 .a-table .thumb, .thumb{width:42px;height:42px;border-radius:10px;object-fit:cover;}
 
 /* широкие таблицы на телефоне заменяем карточками */
@@ -890,10 +897,12 @@ body[data-mode="admin"] .tb-size{display:none;}
 .a-btn:hover{color:var(--text);border-color:rgba(198,241,110,.45);}
 .a-btn.primary{background:var(--lime);color:#0B1008;border-color:var(--lime);font-weight:600;}
 .a-btn.danger{color:var(--danger);border-color:rgba(242,133,107,.4);}
+/* быстрая сумма начисления баллов и её выбранное состояние */
+.a-btn.amt{padding:var(--sp-6) var(--sp-14);}
+.a-btn.is-on{color:var(--lime);border-color:rgba(198,241,110,.5);background:rgba(198,241,110,.10);}
 /* отметка «блюдо на главной» — звезда в таблице меню */
 .a-btn.star{width:44px;padding:var(--sp-10);display:grid;place-items:center;color:var(--muted);}
 .a-btn.star .ic{width:18px;height:18px;}
-.a-btn.star.is-on{color:var(--lime);border-color:rgba(198,241,110,.5);background:rgba(198,241,110,.10);}
 .row-star{display:inline-flex;align-items:center;gap:var(--sp-8);}
 .row-star .ic{width:16px;height:16px;color:var(--lime);}
 .a-row{display:flex;gap:var(--sp-8);flex-wrap:wrap;}
@@ -943,7 +952,7 @@ body[data-mode="admin"] .tb-size{display:none;}
 }
 .a-tabs button.is-active{background:var(--lime);color:#0B1008;font-weight:600;border-color:var(--lime);}
 
-.a-orders{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-14);}
+.a-orders{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:var(--sp-14);}
 .a-order{background:var(--surface);border-radius:16px;padding:var(--sp-16);border:1px solid transparent;}
 .a-order.is-new{border-color:rgba(198,241,110,.45);background:linear-gradient(180deg,rgba(198,241,110,.07),var(--surface));}
 .a-order-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-10);margin-bottom:var(--sp-12);}
@@ -1264,8 +1273,7 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
 }
 
 @container admin (max-width:560px){
-  .a-orders{grid-template-columns:minmax(0,1fr);}
-  /* карточки в одну колонку */
+  /* карточки в одну колонку; заказы уже сами перестраиваются auto-fit */
   .a-cards{grid-template-columns:minmax(0,1fr);}
   .dish-fields{grid-template-columns:minmax(0,1fr);}
   .a-photo{flex-direction:column;}

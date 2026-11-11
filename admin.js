@@ -898,6 +898,32 @@ function adminMarketing(){
 
 /* -------------------------------- клиенты ------------------------------- */
 
+function bonusOpenFor(c){
+  return !!(admin.bonusFor && admin.bonusFor.phone === c.phone);
+}
+
+/* форма начисления баллов раскрывается прямо под гостем — без модального окна,
+   по тому же принципу, что «Детали» в списке блюд */
+function bonusBoxHtml(c){
+  return `
+    <div class="a-bonus-box">
+      <span class="muted" style="font-size:var(--fs-12)">Сейчас у гостя ${fmt(c.bonus)} · начислить:</span>
+      ${[100,500,1000].map(n => `<button class="a-btn amt ${Number(admin.bonusAmount)===n?'is-on':''}" data-act="admin-bonus-quick" data-amount="${n}" aria-pressed="${Number(admin.bonusAmount)===n}">+${fmt(n)}</button>`).join('')}
+      <input class="input-plain js-bonus-amount" type="number" min="1" inputmode="numeric" aria-label="Сколько баллов начислить" data-act="admin-bonus-amount" value="${admin.bonusAmount}">
+      <button class="a-btn primary" data-act="admin-bonus-apply" data-phone="${c.phone}">Начислить</button>
+      <button class="a-btn" data-act="admin-bonus-cancel">Отмена</button>
+    </div>
+    <p class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-8)">Начисление попадёт в историю демо-счёта, срок сгорания — по общему правилу. Гость с этим телефоном увидит новый баланс.</p>`;
+}
+
+function focusBonusAmount(){
+  /* форма рендерится и в таблице, и в карточках (одна из них скрыта CSS) —
+     фокус ставим на видимый экземпляр поля */
+  const vis = [...document.querySelectorAll('.js-bonus-amount')].find(i => i.offsetParent !== null)
+    || document.querySelector('.js-bonus-amount');
+  if (vis) vis.focus({ preventScroll:true });
+}
+
 function adminClients(){
   const orderCount = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.orders) || 0), 0);
   const orderSum = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.sum) || 0), 0);
@@ -925,11 +951,12 @@ function adminClients(){
             <td class="muted nw">${c.last}</td>
             <td class="nw">
               <div class="a-row">
-                <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}">Начислить</button>
+                <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}" aria-expanded="${bonusOpenFor(c)}">Начислить</button>
                 <button class="a-btn danger" data-act="admin-client-del" data-phone="${c.phone}" aria-label="Удалить гостя ${c.name}">${icon('trash')}</button>
               </div>
             </td>
-          </tr>`).join('')}
+          </tr>
+          ${bonusOpenFor(c) ? `<tr class="a-bonus-tr"><td colspan="8">${bonusBoxHtml(c)}</td></tr>` : ''}`).join('')}
       </tbody>
     </table>
 
@@ -945,26 +972,14 @@ function adminClients(){
             </div>
             <div class="muted" style="font-size:var(--fs-12)">Бонусы ${fmt(c.bonus)} · был ${c.last}</div>
             <div class="a-row">
-              <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}">Начислить баллы</button>
+              <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}" aria-expanded="${bonusOpenFor(c)}">Начислить баллы</button>
               <button class="a-btn danger" data-act="admin-client-del" data-phone="${c.phone}" aria-label="Удалить гостя ${c.name}">${icon('trash')}</button>
             </div>
+            ${bonusOpenFor(c) ? bonusBoxHtml(c) : ''}
           </div>
         </article>`).join('')}
     </div>
   </div>
-
-  ${admin.bonusFor ? `
-  <div class="a-panel" style="margin-top:var(--sp-16)">
-    <h2>Начисление бонусов: ${admin.bonusFor.name}</h2>
-    <div class="a-grid a-grid-2" style="gap:var(--sp-10);align-items:end">
-      <input class="input-plain" id="bonusAmount" type="number" min="1" inputmode="numeric" aria-label="Сколько баллов начислить" data-act="admin-bonus-amount" value="${admin.bonusAmount}">
-      <div class="a-row">
-        <button class="a-btn primary" data-act="admin-bonus-apply" data-phone="${admin.bonusFor.phone}">Начислить</button>
-        <button class="a-btn" data-act="admin-bonus-cancel">Отмена</button>
-      </div>
-    </div>
-    <p class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-10)">Сейчас у гостя ${fmt(admin.bonusFor.bonus)}. Ручное начисление попадёт в историю демо-счёта; гость с этим телефоном увидит новый баланс.</p>
-  </div>` : ''}
 
   <div class="a-panel" style="margin-top:var(--sp-16)">
     <h2>Импорт гостей из старой CRM</h2>
@@ -1668,11 +1683,15 @@ document.addEventListener('click', ev => {
   if (act === 'admin-bonus-open'){
     const c = ADMIN_CLIENTS.find(x => x.phone === el.dataset.phone);
     if (!c) return;
-    admin.bonusFor = c;
-    admin.bonusAmount = 100;
+    admin.bonusFor = bonusOpenFor(c) ? null : c;
+    if (admin.bonusFor) admin.bonusAmount = 100;
     renderAdmin();
-    const amt = document.getElementById('bonusAmount');
-    if (amt) amt.focus({ preventScroll:true });
+    if (admin.bonusFor) focusBonusAmount();
+  }
+  if (act === 'admin-bonus-quick'){
+    admin.bonusAmount = Number(el.dataset.amount);
+    renderAdmin();
+    focusBonusAmount();
   }
   if (act === 'admin-bonus-cancel'){
     admin.bonusFor = null;
