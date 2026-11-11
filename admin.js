@@ -294,7 +294,6 @@ function readDraftFields(rootId, act, base){
 }
 
 const adminTop = (title, sub) => {
-  const staff = ADMIN_STAFF.find(s => s.id === state.staffId) || ADMIN_STAFF[0];
   return `
   <div>
     <h1>${title}</h1>
@@ -303,7 +302,12 @@ const adminTop = (title, sub) => {
   <div class="row gap-10">
     <a class="a-guide" href="guide.html" target="_blank" rel="noopener">Инструкция</a>
     <span class="a-pill lime">${icon('volume')} Звук нового заказа</span>
-    <span class="a-pill olive">${esc(roleLabel(staff.role))} · ${esc(staff.name)} · демо</span>
+    <label class="a-staff-switch">
+      <span class="sr-only">Сотрудник, от имени которого открыта панель</span>
+      <select class="input-plain" data-act="admin-staff-switch">
+        ${ADMIN_STAFF.map(s => `<option value="${s.id}" ${state.staffId===s.id?'selected':''}>${esc(s.name)} · ${esc(roleLabel(s.role))}</option>`).join('')}
+      </select>
+    </label>
   </div>`;
 };
 
@@ -2111,7 +2115,7 @@ function adminSettings(){
       </div>
       <div class="a-panel">
         <h2>Сотрудники и роли</h2>
-        <p class="a-lead-sm">Выберите роль у человека или добавьте нового. Войти в демо-панель: приложение гостя → «Профиль» → «Доступ сотрудника».</p>
+        <p class="a-lead-sm">Выберите роль у человека или добавьте нового. Кто сейчас смотрит панель — переключается в шапке админки (демо, без входа по SMS).</p>
         ${ADMIN_STAFF.map(person => `
           <div class="sum-row a-staff-row">
             <div><div style="font-weight:600">${esc(person.name)}</div><div class="muted" style="font-size:var(--fs-12)">${esc(person.phone)}</div><div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-4)">${esc(STAFF_ROLES[person.role].description)}</div></div>
@@ -2601,7 +2605,7 @@ document.addEventListener('click', ev => {
     admin.staffDraft = { name:'', phone:'', role:'operator' };
     renderAdmin();
     render();
-    toast(name + ' добавлен — можно выбрать его в «Профиле» → «Доступ сотрудника»');
+    toast(name + ' добавлен — выбрать его можно в шапке админки');
   }
   if (act === 'admin-banner-create'){
     const dr = readDraftFields('bannerForm', 'admin-banner-draft', admin.bannerDraft);
@@ -3074,6 +3078,12 @@ document.addEventListener('change', ev => {
     admin.pushDraft[el.dataset.field] = el.value;
     if (['audience','promo','when'].includes(el.dataset.field)) renderAdmin();
     else updatePushPreview();
+    return;
+  }
+  if (el.dataset.act === 'admin-staff-switch'){
+    if (!ADMIN_STAFF.some(s => s.id === el.value)) return;
+    state.staffId = el.value;
+    renderAdmin();
     return;
   }
   if (el.dataset.act === 'admin-staff-role'){

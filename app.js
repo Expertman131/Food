@@ -1123,6 +1123,8 @@ function scrCheckout(){
   </section>` : pickup ? `
   <section class="section">
     <h2 class="h2" style="margin-bottom:var(--sp-12)">Точка самовывоза</h2>
+    <div class="map-box" id="mapPickup" role="region" aria-label="Карта точек самовывоза"></div>
+    <div class="map-note">${icon('info')}<span>Нажмите на точку на карте — выбранная точка подсветится. Светлые круги — зоны доставки: если ваш адрес внутри, заказ можно оставить с доставкой.</span></div>
     ${LOCATIONS.map(l => `
       <div class="pay-row ${state.locationId===l.id?'is-on':''}" data-act="pick-location" data-id="${l.id}" role="button" tabindex="0" aria-pressed="${state.locationId===l.id}" style="display:flex;gap:var(--sp-12);align-items:center">
         <div class="pay-icon">${icon('pin')}</div>
@@ -1322,22 +1324,39 @@ async function geoCheckAddress(text){
 
 /* Карта ставится после каждой перерисовки: контейнер пересоздаётся вместе с экраном */
 function mountGeo(){
-  const el = $('#mapDeliver');
-  if (!el) return;
-  const map = geoMount(el);
-  if (!map) return;
-  const saved = state.addresses.map(a => ({ label:a.label, address:a.address, point: geo.cache.get(a.address.trim().toLowerCase()) }));
-  geoDraw(map, { point: geo.point, locId: geo.locId, saved });
-  geoPickByClick(map, p => { geoApply(p); render(); });
-  saved.forEach(a => {
-    if (a.point) return;
-    geoLookup(a.address).then(hit => {
-      if (!hit) return;
-      geo.cache.set(a.address.trim().toLowerCase(), hit);
-      const m = geo.maps.get('mapDeliver');
-      if (m) geoDraw(m, { point: geo.point, locId: geo.locId, saved: state.addresses.map(x => ({ label:x.label, address:x.address, point: geo.cache.get(x.address.trim().toLowerCase()) })) });
-    });
-  });
+  const deliver = $('#mapDeliver');
+  if (deliver){
+    const map = geoMount(deliver);
+    if (map){
+      const saved = state.addresses.map(a => ({ label:a.label, address:a.address, point: geo.cache.get(a.address.trim().toLowerCase()) }));
+      geoDraw(map, { point: geo.point, locId: geo.locId, saved });
+      geoPickByClick(map, p => { geoApply(p); render(); });
+      saved.forEach(a => {
+        if (a.point) return;
+        geoLookup(a.address).then(hit => {
+          if (!hit) return;
+          geo.cache.set(a.address.trim().toLowerCase(), hit);
+          const m = geo.maps.get('mapDeliver');
+          if (m) geoDraw(m, { point: geo.point, locId: geo.locId, saved: state.addresses.map(x => ({ label:x.label, address:x.address, point: geo.cache.get(x.address.trim().toLowerCase()) })) });
+        });
+      });
+    }
+  }
+  const pickup = $('#mapPickup');
+  if (pickup){
+    const map = geoMount(pickup);
+    if (map){
+      geoDraw(map, { locId: state.locationId });
+      geoPickByClick(map, p => {
+        const near = geoNearestAny(p.lat, p.lng);
+        if (!near || near.km > 12){ toast('Нажмите ближе к точке ресторана'); return; }
+        state.locationId = near.loc.id;
+        state.slot = null;
+        applyOpenHours();
+        render();
+      });
+    }
+  }
 }
 
 function payMethodRow(id, ico, name, note){
@@ -1699,20 +1718,6 @@ function scrProfile(){
     <button class="btn-lime" data-act="save-contacts"><span>Сохранить контакты</span>${icon('arrowRight')}</button>
   </section>
   <section class="section">
-    <h2 class="h2" style="margin-bottom:var(--sp-12)">Доступ сотрудника</h2>
-    <div class="card">
-      <p class="small soft">Сотрудник открывает «Профиль» → «Доступ сотрудника». В прототипе можно выбрать демо-пользователя и посмотреть панель от его имени.</p>
-      <div class="field" style="margin-top:var(--sp-14)">
-        <label for="staffUser">Демо-сотрудник</label>
-        <select id="staffUser" data-act="f" data-field="staffId">
-          ${ADMIN_STAFF.map(s => `<option value="${s.id}" ${state.staffId===s.id?'selected':''}>${esc(s.name)} · ${esc(roleLabel(s.role))}</option>`).join('')}
-        </select>
-      </div>
-      <button class="btn-outline" style="margin-top:var(--sp-14)" data-act="mode" data-mode="admin">Открыть демо-панель</button>
-      <p class="hint" style="margin-top:var(--sp-10)">Без SMS и пароля. Список и роли задаются в админке → «Настройки». Настоящие приглашения и ограничение прав появятся только с серверной авторизацией.</p>
-    </div>
-  </section>
-  <section class="section">
     <div class="row gap-10">
       <button class="btn-outline grow" data-act="go" data-screen="restaurant" style="border-radius:999px;padding:var(--sp-12) var(--sp-16)">${icon('pin')} О ресторане</button>
       <button class="btn-outline grow" data-act="go" data-screen="promos" style="border-radius:999px;padding:var(--sp-12) var(--sp-16)">${icon('tag')} Акции</button>
@@ -1982,9 +1987,9 @@ function render(){
   lastScreen = scr;
   if (window.scrollY !== keepWinY) window.scrollTo(0, keepWinY);
   scheduleStatus();
-  if (scr === 'checkout' && state.deliveryType === 'delivery'){
+  if (scr === 'checkout' && state.deliveryType !== 'table'){
     mountGeo();
-    if (geo.status === 'idle' && state.address.trim()) geoCheckAddress(state.address);
+    if (state.deliveryType === 'delivery' && geo.status === 'idle' && state.address.trim()) geoCheckAddress(state.address);
   }
 }
 
@@ -2024,7 +2029,7 @@ const FEATURE_GROUPS = [
     'Стоп-лист: блюдо пропадает из меню гостя сразу',
     'Акции: карусель на главной, тап = промокод или блюдо',
     'QR-меню на столе: заказ к столу без регистрации, оплата у стола',
-    'Профиль: бонусы, уровень гостя и прогресс до следующего, контакты, адресная книга, история заказов, доступ сотрудника',
+    'Профиль: бонусы, уровень гостя и прогресс до следующего, контакты, адресная книга, история заказов',
     'Вход по SMS: номер проверяется, неверный код даёт ошибку и повторную отправку; экран открывается из списка экранов'
   ]},
   { title:'Админ-панель', items:[
@@ -2455,7 +2460,6 @@ function onInput(el){
   if (f === 'comment') state.comment = el.value;
   if (f === 'promoInput') state.promoInput = el.value;
   if (f === 'newAddress') state.newAddress = el.value;
-  if (f === 'staffId') state.staffId = el.value;
   if (f === 'authPhone') state.authPhone = el.value;
   if (f === 'authCode'){
     const inputs = [...document.querySelectorAll('#viewport .code-input input')];

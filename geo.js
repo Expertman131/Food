@@ -58,6 +58,17 @@ const geoNearest = (lat, lng) => {
   return best;
 };
 
+/* Ближайшая точка среди всех — для выбора точки самовывоза на карте */
+const geoNearestAny = (lat, lng) => {
+  let best = null;
+  LOCATIONS.forEach(l => {
+    if (!geoHasCoords(l)) return;
+    const km = geoKm({ lat, lng }, { lat: l.lat, lng: l.lng });
+    if (!best || km < best.km) best = { loc: l, km };
+  });
+  return best;
+};
+
 /* Адрес вида «Москва, ул. Ташкентская, 19, кв. 42» поисковик не понимает:
    убираем квартиру, подъезд и этаж, а сокращения разворачиваем в слова. */
 const GEO_DROP = /^(кв\.?|квартира|стр\.?|строение|подъезд|этаж|д\.|дом|корп\.?|корпус|мкр\.?|микрорайон|блок)/i;

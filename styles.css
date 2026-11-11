@@ -909,6 +909,9 @@ body[data-mode="admin"] .tb-size{display:none;}
 .a-staff-row{align-items:flex-start;gap:var(--sp-12);}
 .a-role-select{flex:0 1 190px;min-width:150px;}
 .a-role-select .input-plain{width:100%;font-size:var(--fs-12);}
+/* переключатель сотрудника в шапке панели */
+.a-staff-switch{flex:0 1 230px;min-width:170px;}
+.a-staff-switch .input-plain{width:100%;font-size:var(--fs-12);padding:9px 10px;min-height:38px;}
 .a-pill{
   display:inline-flex;align-items:center;gap:var(--sp-6);border-radius:999px;padding:var(--sp-6) var(--sp-12);
   font-size:var(--fs-12);font-weight:600;background:var(--surface-2);color:var(--soft);
@@ -1323,6 +1326,7 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
   .a-banner-thumb{width:100%;}
   .a-banner-info{width:100%;}
   .a-role-select{flex:1 1 100%;min-width:0;width:100%;}
+  .a-staff-switch{flex:1 1 100%;min-width:0;width:100%;}
   /* фильтры: поиск занимает всю ширину, счётчик и кнопка — в свои строки */
   .a-toolbar-search{flex:1 1 100%;max-width:none;}
   .a-toolbar-sort{flex:1 1 auto;max-width:none;}
