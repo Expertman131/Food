@@ -3,15 +3,16 @@
    поиск адреса — Photon (без ключа и оплаты). Всё живёт в памяти вкладки,
    как и остальной прототип: сервера у демо нет.
 
-   Если интернета нет, экран остаётся рабочим: карта пустая, адрес вводится
-   текстом, а точку можно поставить кликом по карте. Пустого экрана не будет. */
+   Карта нужна только там, где гость выбирает точку самовывоза. Зона доставки
+   проверяется по адресу без карты: адрес ищется, а ответ приложение даёт словами.
+   Если интернета нет, экран остаётся рабочим: карта пустая, точку выбирают
+   из списка под ней, адрес вводится текстом. Пустого экрана не будет. */
 
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILE_ATTR = '© OpenStreetMap';
 const PHOTON_URL = 'https://photon.komoot.io/api/';
 
 const geo = {
-  point: null,        // { lat, lng, label } — точка, найденная для адреса гостя
   locId: null,        // точка ресторана, в зоне которой оказался адрес
   status: 'idle',     // idle | searching | found | outside | failed
   km: 0,              // расстояние от адреса до точки ресторана, км
@@ -141,7 +142,7 @@ function geoMount(el, opts = {}){
   return map;
 }
 
-/* Зоны доставки, точки ресторана и адрес гостя — на одной карте */
+/* Зоны доставки и точки ресторана — на карте выбора точки самовывоза */
 function geoDraw(map, opts = {}){
   if (!map) return;
   const drawn = map._vasabiLayers || (map._vasabiLayers = L.layerGroup().addTo(map));
@@ -165,20 +166,6 @@ function geoDraw(map, opts = {}){
     }).addTo(drawn).bindPopup(`<b>${l.name}</b><br>${l.address}<br>${l.hours}`);
     bounds.push([l.lat, l.lng]);
   });
-
-  (opts.saved || []).forEach(a => {
-    if (!a.point) return;
-    L.circleMarker([a.point.lat, a.point.lng], {
-      radius: 5, color: '#8f8f99', weight: 2, fillColor: '#1b1b1f', fillOpacity: 1
-    }).addTo(drawn).bindPopup(a.label || a.address);
-  });
-
-  if (opts.point){
-    L.circleMarker([opts.point.lat, opts.point.lng], {
-      radius: 7, color: '#c6f16e', weight: 3, fillColor: '#c6f16e', fillOpacity: 1
-    }).addTo(drawn);
-    bounds.push([opts.point.lat, opts.point.lng]);
-  }
 
   if (opts.fit !== false && bounds.length){
     map.fitBounds(L.latLngBounds(bounds).pad(0.35), { animate: false });

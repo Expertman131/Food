@@ -1158,8 +1158,6 @@ function scrCheckout(){
   <section class="section">
     <h2 class="h2" style="margin-bottom:var(--sp-14)">Адрес доставки</h2>
     ${addressBook()}
-    <div class="map-box" id="mapDeliver" role="region" aria-label="Карта доставки"></div>
-    <div class="map-note">${icon('info')}<span>Светлый круг — зона доставки точки. Нажмите на карту, чтобы поставить точку вручную, если адрес не нашёлся.</span></div>
     <div class="field" style="margin-top:var(--sp-14)">
       <label for="fAddr">Улица, дом, квартира</label>
       <input id="fAddr" data-act="f" data-field="address" value="${state.address}" placeholder="Улица, дом, квартира"
@@ -1167,7 +1165,8 @@ function scrCheckout(){
         ${state.errors.address ? 'aria-invalid="true" aria-describedby="err-fAddr"' : ''}>
       ${state.errors.address ? `<p class="err" id="err-fAddr" role="alert">${state.errors.address}</p>` : ''}
     </div>
-    <button class="btn-outline" data-act="geo-find">${icon('search')} Найти на карте</button>
+    <button class="btn-outline" data-act="geo-find">${icon('search')} Проверить адрес</button>
+    <p class="hint" style="margin-top:var(--sp-10)">Проверим, доведём ли этот адрес и из какой точки.</p>
     ${geoStatusHtml()}
     <div class="field" style="margin-top:var(--sp-14)">
       <label for="fComment">Комментарий (необязательно)</label>
@@ -1260,7 +1259,7 @@ function addressBook(){
    город нельзя, это дыра в доставке. */
 function geoDeliverLine(){
   const loc = LOCATIONS.find(l => l.id === (geo.locId || state.locationId)) || LOCATIONS[0];
-  if (geoAddressChanged()) return 'Укажите адрес и найдите его на карте';
+  if (geoAddressChanged()) return 'Укажите адрес и проверьте его';
   if (geo.status === 'outside') return 'По этому адресу доставки нет — доступен самовывоз';
   return `Доставит ${loc.name} · ${locStatusText(loc)}`;
 }
@@ -1270,9 +1269,9 @@ function geoDeliverLine(){
 const geoAddressChanged = () => geo.status !== 'idle' && (state.address || '').trim() !== (geo.checkedAddress || '').trim();
 
 function geoStatusHtml(){
-  if (geoAddressChanged()) return `<p class="muted small" style="margin-top:var(--sp-10)">Адрес изменился — нажмите «Найти на карте», чтобы проверить зону доставки.</p>`;
+  if (geoAddressChanged()) return `<p class="muted small" style="margin-top:var(--sp-10)">Адрес изменился — нажмите «Проверить адрес», чтобы узнать, доведём ли его.</p>`;
   if (geo.status === 'searching') return `<p class="muted small" style="margin-top:var(--sp-10)">Ищем адрес…</p>`;
-  if (geo.status === 'failed') return `<p class="err" role="alert" style="margin-top:var(--sp-10)">Не нашли этот адрес автоматически. Поставьте точку на карте или напишите адрес подробнее.</p>`;
+  if (geo.status === 'failed') return `<p class="err" role="alert" style="margin-top:var(--sp-10)">Не нашли этот адрес автоматически. Напишите его подробнее: улица, дом и корпус.</p>`;
   if (geo.status === 'outside'){
     const n = geo.nearest;
     return `<div class="notice is-warn" style="margin-top:var(--sp-12)">${icon('info')}<span>
@@ -1289,9 +1288,8 @@ function geoStatusHtml(){
   return '';
 }
 
-/* Ищет адрес и определяет зону. Точка могла прийти из карты — тогда ищем зону сразу. */
+/* Ищет адрес и определяет зону доставки */
 function geoApply(point){
-  geo.point = point;
   const zone = geoZoneFor(point.lat, point.lng);
   if (zone){
     geo.status = 'found';
@@ -1313,7 +1311,6 @@ async function geoCheckAddress(text){
   const hit = await geoLookup(text);
   if (!hit){
     geo.status = 'failed';
-    geo.point = null;
     geo.locId = null;
     render();
     return;
@@ -1322,41 +1319,21 @@ async function geoCheckAddress(text){
   render();
 }
 
-/* Карта ставится после каждой перерисовки: контейнер пересоздаётся вместе с экраном */
+/* Карта самовывоза: гость выбирает точку на карте */
 function mountGeo(){
-  const deliver = $('#mapDeliver');
-  if (deliver){
-    const map = geoMount(deliver);
-    if (map){
-      const saved = state.addresses.map(a => ({ label:a.label, address:a.address, point: geo.cache.get(a.address.trim().toLowerCase()) }));
-      geoDraw(map, { point: geo.point, locId: geo.locId, saved });
-      geoPickByClick(map, p => { geoApply(p); render(); });
-      saved.forEach(a => {
-        if (a.point) return;
-        geoLookup(a.address).then(hit => {
-          if (!hit) return;
-          geo.cache.set(a.address.trim().toLowerCase(), hit);
-          const m = geo.maps.get('mapDeliver');
-          if (m) geoDraw(m, { point: geo.point, locId: geo.locId, saved: state.addresses.map(x => ({ label:x.label, address:x.address, point: geo.cache.get(x.address.trim().toLowerCase()) })) });
-        });
-      });
-    }
-  }
-  const pickup = $('#mapPickup');
-  if (pickup){
-    const map = geoMount(pickup);
-    if (map){
-      geoDraw(map, { locId: state.locationId });
-      geoPickByClick(map, p => {
-        const near = geoNearestAny(p.lat, p.lng);
-        if (!near || near.km > 12){ toast('Нажмите ближе к точке ресторана'); return; }
-        state.locationId = near.loc.id;
-        state.slot = null;
-        applyOpenHours();
-        render();
-      });
-    }
-  }
+  const el = $('#mapPickup');
+  if (!el) return;
+  const map = geoMount(el);
+  if (!map) return;
+  geoDraw(map, { locId: state.locationId });
+  geoPickByClick(map, p => {
+    const near = geoNearestAny(p.lat, p.lng);
+    if (!near || near.km > 12){ toast('Нажмите ближе к точке ресторана'); return; }
+    state.locationId = near.loc.id;
+    state.slot = null;
+    applyOpenHours();
+    render();
+  });
 }
 
 function payMethodRow(id, ico, name, note){
@@ -1787,7 +1764,7 @@ function scrRestaurant(){
         <div class="muted small" style="margin-top:var(--sp-8)">${l.delivery}</div>
         <p class="small" style="margin-top:var(--sp-8);color:${locIsOpen(l) ? 'var(--lime)' : 'var(--muted)'}">${locStatusText(l)}</p>
         ${l.service === 'delivery' && l.zoneKm > 0
-          ? `<p class="muted small" style="margin-top:var(--sp-6)">${icon('info')} Доставляем в ${geoFormatKm(l.zoneKm)} от точки. Адрес проверим на карте при оформлении.</p>`
+          ? `<p class="muted small" style="margin-top:var(--sp-6)">${icon('info')} Доставляем в ${geoFormatKm(l.zoneKm)} от точки. Адрес проверим при оформлении заказа.</p>`
           : ''}
       </div>
     </section>`).join('')}
@@ -1987,9 +1964,10 @@ function render(){
   lastScreen = scr;
   if (window.scrollY !== keepWinY) window.scrollTo(0, keepWinY);
   scheduleStatus();
-  if (scr === 'checkout' && state.deliveryType !== 'table'){
+  if (scr === 'checkout' && state.deliveryType === 'pickup'){
     mountGeo();
-    if (state.deliveryType === 'delivery' && geo.status === 'idle' && state.address.trim()) geoCheckAddress(state.address);
+  } else if (scr === 'checkout' && state.deliveryType === 'delivery' && geo.status === 'idle' && state.address.trim()){
+    geoCheckAddress(state.address);
   }
 }
 
@@ -2021,7 +1999,7 @@ const FEATURE_GROUPS = [
     'Карточка блюда: фото, состав, честные аллергены, модификаторы с доплатой',
     'Избранное: сердечко в карточке, добавление всех блюд в корзину',
     'Корзина: степперы, минимальный заказ, допродажи к заказу',
-    'Оформление: доставка / самовывоз, адресная книга, слоты времени, способ оплаты',
+    'Оформление: доставка / самовывоз, адресная книга, проверка адреса по зоне доставки, карта выбора точки самовывоза, слоты времени, способ оплаты',
     'Часы работы: статус точки и заказ на завтра, если ресторан закрыт',
     'Оплата: подтверждение заказа, промокод и бонусы, карта / СБП / Apple Pay / наличные',
     'Статус заказа: таймлайн, отмена, экран отказа с возвратом',
