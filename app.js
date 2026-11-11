@@ -1590,7 +1590,7 @@ function scrProfile(){
               </div>`).join('')}
           </div>
           <p class="muted small" style="margin-top:var(--sp-10)">Базовый кэшбэк по каналу. Заказ в зале идёт без аккаунта — по нему баллы не начисляются.</p>
-          <p class="muted small" style="margin-top:var(--sp-6)"><b>Правила трат:</b> ${bonusRulesText()}. То есть доставка от 2 000 ₽ даёт ${bonusPercent('delivery', 2000)}%, а заказ до 1 000 ₽ — ${bonusPercent('delivery', 999)}%.</p>
+          <p class="muted small" style="margin-top:var(--sp-6)"><b>Правила трат:</b> ${bonusRulesText()} То есть доставка от 2 000 ₽ даёт ${bonusPercent('delivery', 2000)}%, а заказ до 1 000 ₽ — ${bonusPercent('delivery', 999)}%.</p>
           <p class="muted small" style="margin-top:var(--sp-10)">Баллами можно оплатить до ${RULES.bonusMaxPay}% следующего заказа. ${bonusExpiryMonths() ? `Баллы сгорают через ${bonusExpiryMonths()} ${plural(bonusExpiryMonths(),'месяц','месяца','месяцев')} после начисления.` : 'Баллы не сгорают.'}</p>`
         : '<p class="muted small" style="margin-top:var(--sp-10)">Программа временно отключена рестораном. Списание и начисление недоступны.</p>'}
       <div class="bonus-history">

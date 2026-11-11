@@ -261,7 +261,7 @@ const bonusEarnFor = (channel, sum) => {
   return Math.floor(Math.max(0, sum) * bonusPercent(channel, sum) / 100);
 };
 
-/* Текстом: «7% при доставке, +2 п.п. от 2 000 ₽» */
+/* Текстом правила трат: «от 1 000 ₽ — +1 п.п., от 2 000 ₽ — +2 п.п.» */
 const bonusRulesText = () => {
   const tiers = (RULES.bonusSpendTiers || [])
     .slice()
