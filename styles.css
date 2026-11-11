@@ -835,12 +835,13 @@ body[data-mode="admin"] .tb-size{display:none;}
 .dish-fields > .a-labeled:first-child{grid-column:1 / -1;}
 .a-badge-field{margin-top:var(--sp-12);}
 .a-badge-presets{display:flex;flex-wrap:wrap;gap:var(--sp-8);margin-top:var(--sp-10);}
-.a-badge-preset{
+/* метка блюда и вариант фильтра — одна и та же форма чипа */
+.a-badge-preset,.a-chip{
   min-height:44px;padding:var(--sp-10) var(--sp-14);border:1px solid var(--line-soft);border-radius:999px;
   background:var(--surface-2);color:var(--soft);font-size:var(--fs-12);cursor:pointer;
 }
-.a-badge-preset:hover{border-color:var(--lime);color:var(--text);}
-.a-badge-preset.is-active{border-color:var(--lime);background:rgba(198,241,110,.13);color:var(--lime);}
+.a-badge-preset:hover,.a-chip:hover{border-color:var(--lime);color:var(--text);}
+.a-badge-preset.is-active,.a-chip.is-active{border-color:var(--lime);background:rgba(198,241,110,.13);color:var(--lime);}
 .a-form-note{margin:var(--sp-10) 0 0;font-size:var(--fs-12);line-height:1.5;color:var(--muted);}
 .a-form-error{margin-top:var(--sp-10);font-size:var(--fs-12);line-height:1.5;color:var(--danger);}
 .a-stock{width:100%;margin-top:var(--sp-4);border-top:1px solid var(--line-soft);padding-top:var(--sp-8);}
@@ -912,10 +913,6 @@ body[data-mode="admin"] .tb-size{display:none;}
 /* Список блюд: одна конструкция на все ширины — без таблица/карточки и без
    горизонтальной прокрутки. В строке только главное, остальное раскрывает
    кнопка «Детали» под строкой; узкая панель переносит блоки на вторую строку */
-.a-dish-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-12);flex-wrap:wrap;margin-bottom:var(--sp-10);}
-.a-dish-tools{display:flex;gap:var(--sp-8);flex-wrap:wrap;align-items:center;flex:1 1 320px;justify-content:flex-end;}
-.a-dish-tools .input-plain{width:auto;min-width:0;flex:0 1 240px;}
-.a-dish-tools select.input-plain{flex:0 1 auto;}
 .a-dishlist{border:1px solid var(--line-soft);border-radius:14px;overflow:hidden;}
 .a-dish{display:flex;align-items:center;gap:var(--sp-10);flex-wrap:wrap;padding:var(--sp-12) var(--sp-14);border-bottom:1px solid var(--line-soft);}
 .a-dishlist > :last-child{border-bottom:0;}
@@ -951,6 +948,39 @@ body[data-mode="admin"] .tb-size{display:none;}
   border-radius:999px;padding:var(--sp-10) var(--sp-16);min-height:44px;font-size:var(--fs-13);cursor:pointer;
 }
 .a-tabs button.is-active{background:var(--lime);color:#0B1008;font-weight:600;border-color:var(--lime);}
+
+/* ---------- фильтры разделов ---------- */
+/* Поиск и сортировка всегда на виду, остальные группы — под кнопкой «Фильтры» */
+.a-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-8);margin-bottom:var(--sp-12);}
+.a-toolbar-search{flex:1 1 200px;min-width:0;max-width:340px;}
+.a-toolbar-sort{flex:0 1 auto;max-width:220px;}
+.a-toolbar-count{font-size:var(--fs-12);color:var(--muted);margin-left:auto;white-space:nowrap;}
+.a-toolbar-tools{display:flex;gap:var(--sp-8);flex-wrap:wrap;}
+.a-filter-toggle.is-on{border-color:var(--lime);color:var(--lime);background:rgba(198,241,110,.10);}
+/* ряд активных фильтров: чипы снимаются одним нажатием */
+.a-filter-active{display:flex;flex-wrap:wrap;gap:var(--sp-8);align-items:center;margin-bottom:var(--sp-12);}
+.a-filter-active:empty{display:none;}
+.a-chip-active{
+  display:inline-flex;align-items:center;gap:var(--sp-6);min-height:44px;padding:var(--sp-8) var(--sp-12);
+  border-radius:999px;background:rgba(198,241,110,.12);border:1px solid rgba(198,241,110,.35);
+  color:var(--lime);font-size:var(--fs-12);cursor:pointer;
+}
+.a-chip-active:hover{border-color:var(--lime);background:rgba(198,241,110,.2);}
+.a-filter-panel{
+  border:1px solid var(--line-soft);border-radius:14px;padding:var(--sp-14);
+  margin-bottom:var(--sp-14);background:var(--surface-2);
+}
+.a-filter-panel[hidden]{display:none;}
+.a-filter-group{margin-bottom:var(--sp-14);}
+.a-filter-group:last-child{margin-bottom:0;}
+.a-filter-legend{display:block;font-size:var(--fs-12);color:var(--muted);margin-bottom:var(--sp-8);}
+.a-chip-row{display:flex;flex-wrap:wrap;gap:var(--sp-8);}
+.a-chip{display:inline-flex;align-items:center;gap:var(--sp-6);}
+.a-chip .n{font-size:var(--fs-11);color:var(--muted);}
+.a-chip.is-active .n{color:var(--lime);}
+.a-filter-range{display:flex;align-items:center;gap:var(--sp-8);flex-wrap:wrap;}
+.a-filter-range .input-plain{flex:1 1 100px;min-width:0;width:auto;max-width:160px;}
+.a-empty{padding:var(--sp-18) var(--sp-14);text-align:center;font-size:var(--fs-13);color:var(--muted);}
 
 .a-orders{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:var(--sp-14);}
 .a-order{background:var(--surface);border-radius:16px;padding:var(--sp-16);border:1px solid transparent;}
@@ -1282,6 +1312,12 @@ body[data-size-class="lg"] .pdp-desc{max-width:680px;}
   .a-banner-thumb{width:100%;}
   .a-banner-info{width:100%;}
   .a-role-select{flex:1 1 100%;min-width:0;width:100%;}
+  /* фильтры: поиск занимает всю ширину, счётчик и кнопка — в свои строки */
+  .a-toolbar-search{flex:1 1 100%;max-width:none;}
+  .a-toolbar-sort{flex:1 1 auto;max-width:none;}
+  .a-toolbar-count{margin-left:0;}
+  .a-filter-range .input-plain{flex:1 1 100%;max-width:none;}
+  .a-filter-range{align-items:stretch;}
   /* вкладки в одну строку прятали бы последнюю: переносим, чтобы все статусы были на виду */
   .a-tabs{flex-wrap:wrap;overflow:visible;scrollbar-width:auto;}
   .a-stat{padding:var(--sp-14) var(--sp-16);}

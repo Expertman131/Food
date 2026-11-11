@@ -15,7 +15,6 @@ const ADMIN_SECTIONS = [
 const admin = {
   section: 'orders',
   tab: 'new',
-  menuFilter: 'all',
   rejectFor: null,
   promoDraft: { code:'', type:'percent', value:10, min:0 },
   dishDraft: {
@@ -28,8 +27,16 @@ const admin = {
   },
   locationDraft: { id:null, name:'', address:'', open:'11:00', close:'23:00', service:'delivery' },
   staffDraft: { name:'', phone:'', role:'operator' },
-  dishQuery: '',
-  dishSort: 'name',
+  /* Фильтры разделов. Одно поле — одно значение, мультивыбор — массив.
+     Внутри группы значения OR, между группами AND. */
+  f: {
+    orders:  { query:'', range:'', status:[], delivery:[], payment:[], location:[], reject:'', sumMin:'', sumMax:'', sort:'new' },
+    clients: { query:'', segment:[], source:[], sort:'name' },
+    menu:    { query:'', cat:[], state:[], popular:[], sort:'name' },
+    promos:  { query:'', state:[], type:[], sort:'code' },
+    push:    { audience:[], sort:'' }
+  },
+  fOpen: { orders:false, clients:false, menu:false, promos:false, push:false },
   dishOpen: [],
   clientImport: { text:'', rows:null, errors:null, skipped:0 },
   menuImport: { text:'', rows:null, errors:null },
@@ -77,11 +84,48 @@ const emptyLocationDraft = () => ({ id:null, name:'', address:'', open:'11:00', 
 const roleLabel = id => (STAFF_ROLES[id] || STAFF_ROLES.operator).label;
 
 const clientOrigin = c => (c.sources || [c.source || 'Демо']).join(' + ');
+
+/* источники гостя списком: демо-запись, заказ в прототипе, импорт из CRM */
+const clientSources = c => (c.sources && c.sources.length ? c.sources : [c.source || 'Демо']);
+
+/* Сколько раз промокод применили в заказах — считаем по заказам,
+   а не выдумываем число: демо-панель не должна показывать то, чего нет. */
+const promoUses = code => state.orders.filter(o => o.promo === code).length;
+
 function addClientSource(client, source){
   const sources = new Set(client.sources || [client.source || 'Демо']);
   sources.add(source);
   client.sources = [...sources];
   delete client.source;
+}
+
+/* Дата гостя — ISO «ГГГГ-ММ-ДД». Принимаем и «11.11.2026», и «2026-11-11»:
+   в выгрузке из CRM дата может быть в любом из двух видов. */
+function parseClientDate(raw){
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const m = s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
+  if (m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return '';
+}
+const isoToTime = iso => {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(+m[1], +m[2]-1, +m[3]).getTime();
+};
+
+/* Когда гость был последний раз: текстом («сегодня», «вчера», «11 ноября»).
+   Если даты нет (импорт без даты) — показываем текст из выгрузки. */
+function clientLastText(c){
+  if (!c.lastDate) return c.last || '—';
+  const days = Math.floor((Date.now() - isoToTime(c.lastDate)) / 86400000);
+  if (days <= 0) return 'сегодня';
+  if (days === 1) return 'вчера';
+  if (days < 30) return days + ' ' + plural(days, 'день', 'дня', 'дней') + ' назад';
+  const d = new Date(isoToTime(c.lastDate));
+  const m = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'][d.getMonth()];
+  return `${d.getDate()} ${m}`;
 }
 
 /* Заказ с телефоном пополняет базу; QR-заказ к столу без контактов гостя не создаёт. */
@@ -102,6 +146,10 @@ function recordClientOrder(order){
   client.orders = (Number(client.orders) || 0) + 1;
   client.sum = (Number(client.sum) || 0) + Math.max(0, Number(order.total) || 0);
   client.last = order.date || nowRu();
+  if (order.ts){
+    client.lastDate = new Date(order.ts).toISOString().slice(0,10);
+    if (!client.firstDate) client.firstDate = client.lastDate;
+  }
   if (client.orders > 1 && client.segment === 'Новый') client.segment = 'Постоянный';
 }
 
@@ -198,7 +246,9 @@ function parseClientsCsv(text){
     const sum = Math.max(0, parseFloat((cells[3] || '0').replace(/\s/g, '')) || 0);
     const bonus = Math.max(0, parseInt((cells[4] || '0').replace(/\s/g, ''), 10) || 0);
     const segment = (cells[5] || '').trim() || (orders > 1 ? 'Постоянный' : 'Новый');
-    rows.push({ name, phone: formatPhone(phone), orders, sum, bonus, segment, duplicate: known.has(phone) });
+    const lastDate = parseClientDate(cells[6]);
+    const firstDate = parseClientDate(cells[7]);
+    rows.push({ name, phone: formatPhone(phone), orders, sum, bonus, segment, lastDate, firstDate, duplicate: known.has(phone) });
   });
   return { rows, errors, skipped: rows.filter(r => r.duplicate).length + errors.length };
 }
@@ -272,6 +322,7 @@ function renderAdmin(){
   const sec = ADMIN_SECTIONS.find(s => s.id === admin.section);
   $('#adminTop').innerHTML = adminTop(sec.label, adminSub());
   $('#adminBody').innerHTML = (map[admin.section] || adminOrders)();
+  if (FILTER_DEFS[admin.section]) updateFilterMeta(admin.section);
   markScrollPanels();
   window.restoreFocus(fkey);
   restoreAdminInput(ikey);
@@ -290,14 +341,24 @@ function captureAdminInput(){
      поэтому фокус в полях восстанавливаем только на десктопе с мышью */
   if (!window.matchMedia('(pointer: fine)').matches) return null;
   const el = document.activeElement;
-  if (!el || !el.id || !el.closest || !el.closest('#adminBody')) return null;
+  if (!el || !el.closest || !el.closest('#adminBody')) return null;
   if (!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return null;
+  /* поле без id (начисление баллов) узнаём по data-fk: оно рисуется дважды —
+     в таблице и в карточках, восстанавливаем видимый экземпляр */
+  if (el.dataset && el.dataset.fk) return { fk: el.dataset.fk, start: el.selectionStart, end: el.selectionEnd };
+  if (!el.id) return null;
   return {id: el.id, start: el.selectionStart, end: el.selectionEnd};
 }
 
 function restoreAdminInput(key){
   if (!key) return;
-  const el = document.getElementById(key.id);
+  let el = null;
+  if (key.fk){
+    const all = [...document.querySelectorAll('[data-fk="' + key.fk + '"]')];
+    el = all.find(i => i.offsetParent !== null) || all[0] || null;
+  } else {
+    el = document.getElementById(key.id);
+  }
   if (!el) return;
   el.focus({preventScroll: true});
   try { if (el.setSelectionRange && key.start != null) el.setSelectionRange(key.start, key.end); } catch (e) {}
@@ -345,53 +406,560 @@ function renderAdminSide(){
     </div>`;
 }
 
+/* =========================================================================
+   Фильтры разделов: один шаблон на «Заказы», «Клиенты», «Меню», «Промокоды».
+   Описание групп лежит в одном месте, поэтому разметка, счётчики и проверка
+   совпадения не могут разойтись.
+   Правило: фильтр появляется только там, где он реально сужает список.
+   Внутри группы значения OR, между группами AND.
+   ========================================================================= */
+
+const ORDER_DELIVERY_LABELS = { delivery:'Доставка', pickup:'Самовывоз', table:'К столу (QR)' };
+const ORDER_PAYMENT_LABELS  = { card:'Карта онлайн', sbp:'СБП', cash:'Наличные', table:'Оплата у стола' };
+
+const orderBucket = o => {
+  if (o.status === 'new') return 'new';
+  if (o.status === 'done' || DEAD_STATUSES.includes(o.status)) return 'done';
+  return 'work';
+};
+
+const dayStart = offset => {
+  const d = new Date();
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - (Number(offset) || 0));
+  return d.getTime();
+};
+
+/* Заказ попадает во все подходящие периоды: сегодняшний входит и в «7 дней»,
+   поэтому выбор «Последние 7 дней» не теряет сегодняшние заказы. */
+function orderRangeValues(o){
+  const ts = Number(o.ts) || 0;
+  if (!ts) return [];
+  const out = [];
+  if (ts >= dayStart(0)) out.push('today');
+  if (ts >= dayStart(1)) out.push('yesterday');
+  if (ts >= dayStart(6)) out.push('7d');
+  if (ts >= dayStart(29)) out.push('30d');
+  return out;
+}
+
+const FILTER_DEFS = {
+  orders: {
+    noun: 'заказ',
+    plural: ['заказ', 'заказа', 'заказов'],
+    query: '№ заказа, имя, телефон или адрес',
+    emptyText: 'В этой вкладке пусто',
+    items: () => state.orders,
+    tabFilter: o => orderBucket(o),
+    searchText: o => [o.no, o.customer, o.phone, o.address].join(' '),
+    sorts: [
+      { v:'new',      label:'Сначала новые' },
+      { v:'old',      label:'Сначала старые' },
+      { v:'sum-desc', label:'Сначала дорогие' },
+      { v:'sum-asc',  label:'Сначала дешёвые' }
+    ],
+    sorters: {
+      'new':      (a,b) => (Number(b.ts)||0) - (Number(a.ts)||0),
+      'old':      (a,b) => (Number(a.ts)||0) - (Number(b.ts)||0),
+      'sum-desc': (a,b) => (Number(b.total)||0) - (Number(a.total)||0),
+      'sum-asc':  (a,b) => (Number(a.total)||0) - (Number(b.total)||0)
+    },
+    listHtml: list => ordersListHtml(list),
+    groups: [
+      { key:'range', label:'Дата заказа', kind:'select',
+        options: () => [
+          { v:'', label:'Всё время' },
+          { v:'today', label:'Сегодня' },
+          { v:'yesterday', label:'Вчера' },
+          { v:'7d', label:'Последние 7 дней' },
+          { v:'30d', label:'Последние 30 дней' }
+        ],
+        values: o => orderRangeValues(o) },
+      { key:'status', label:'Статус', kind:'chips',
+        options: (section, items, sel) => {
+          const used = new Set(items.map(o => o.status));
+          return Object.keys(STATUS_LABEL)
+            .filter(k => used.has(k) || sel.includes(k))
+            .map(k => ({ v:k, label:STATUS_LABEL[k] }));
+        },
+        values: o => [o.status] },
+      { key:'delivery', label:'Как получить', kind:'chips',
+        options: (section, items, sel) => {
+          const used = new Set(items.map(o => o.deliveryType));
+          return Object.keys(ORDER_DELIVERY_LABELS)
+            .filter(k => used.has(k) || sel.includes(k))
+            .map(k => ({ v:k, label:ORDER_DELIVERY_LABELS[k] }));
+        },
+        values: o => [o.deliveryType] },
+      { key:'payment', label:'Оплата', kind:'chips',
+        options: (section, items, sel) => {
+          const used = new Set(items.map(o => o.payment));
+          return Object.keys(ORDER_PAYMENT_LABELS)
+            .filter(k => used.has(k) || sel.includes(k))
+            .map(k => ({ v:k, label:ORDER_PAYMENT_LABELS[k] }));
+        },
+        values: o => [o.payment] },
+      { key:'location', label:'Точка', kind:'chips',
+        options: (section, items, sel) => LOCATIONS
+          .filter(l => items.some(o => o.locationId === l.id) || sel.includes(l.id))
+          .map(l => ({ v:l.id, label:l.name })),
+        values: o => [o.locationId] },
+      { key:'reject', label:'Причина отмены', kind:'select',
+        options: (section, items, sel) => REJECT_REASONS
+          .filter(r => items.some(o => o.rejectReason === r) || sel === r)
+          .map(r => ({ v:r, label:r })),
+        values: o => o.rejectReason ? [o.rejectReason] : [] },
+      { key:'sum', label:'Сумма заказа', unit:'₽', kind:'sum', minKey:'sumMin', maxKey:'sumMax',
+        total: o => Number(o.total) || 0 }
+    ]
+  },
+  clients: {
+    noun: 'гость',
+    plural: ['гость', 'гостя', 'гостей'],
+    query: 'Имя или телефон',
+    emptyText: 'Гостей пока нет',
+    items: () => ADMIN_CLIENTS,
+    /* телефон ищем и в написанном виде, и по цифрам — без кода страны и без
+       пробелов: владелец набирает «9000000001», а в базе «+7 900 000-00-01» */
+    searchText: c => {
+      const d = normPhone(c.phone);
+      return [c.name, c.phone, d, d.replace(/^7/, '')].join(' ');
+    },
+    sorts: [
+      { v:'name',       label:'По имени' },
+      { v:'orders-desc', label:'Больше заказов' },
+      { v:'sum-desc',   label:'Больше сумма' },
+      { v:'bonus-desc', label:'Больше баллов' },
+      { v:'last-desc',  label:'Недавно заказывал' }
+    ],
+    sorters: {
+      'name':       (a,b) => a.name.localeCompare(b.name, 'ru'),
+      'orders-desc':(a,b) => (Number(b.orders)||0) - (Number(a.orders)||0),
+      'sum-desc':   (a,b) => (Number(b.sum)||0) - (Number(a.sum)||0),
+      'bonus-desc': (a,b) => (Number(b.bonus)||0) - (Number(a.bonus)||0),
+      'last-desc':  (a,b) => (isoToTime(b.lastDate) || 0) - (isoToTime(a.lastDate) || 0)
+    },
+    listHtml: list => clientsListHtml(list),
+    groups: [
+      { key:'segment', label:'Сегмент', kind:'chips',
+        options: (section, items, sel) => {
+          const used = new Set(items.map(c => c.segment));
+          return [...used].filter(v => v).map(v => ({ v, label:v }));
+        },
+        values: c => c.segment ? [c.segment] : [] },
+      { key:'source', label:'Источник', kind:'chips',
+        options: (section, items, sel) => {
+          const used = new Set(items.flatMap(clientSources));
+          return [...used].filter(v => v).map(v => ({ v, label:v }));
+        },
+        values: c => clientSources(c) }
+    ]
+  },
+  menu: {
+    noun: 'блюдо',
+    plural: ['блюдо', 'блюда', 'блюд'],
+    query: 'Название, метка или категория',
+    emptyText: 'В меню пока нет блюд',
+    items: () => DISHES,
+    searchText: d => {
+      const cat = CATEGORIES.find(c => c.id === d.cat);
+      return [d.name, d.badge || '', cat ? cat.name : ''].join(' ');
+    },
+    sorts: [
+      { v:'name',      label:'По имени' },
+      { v:'cat',       label:'По категории' },
+      { v:'price-asc', label:'Сначала недорогие' },
+      { v:'price-desc',label:'Сначала дорогие' }
+    ],
+    sorters: {
+      'name':      (a,b) => a.name.localeCompare(b.name, 'ru'),
+      'cat':       (a,b) => CATEGORIES.findIndex(c => c.id === a.cat) - CATEGORIES.findIndex(c => c.id === b.cat) || a.name.localeCompare(b.name, 'ru'),
+      'price-asc': (a,b) => dishPrice(a) - dishPrice(b),
+      'price-desc':(a,b) => dishPrice(b) - dishPrice(a)
+    },
+    listHtml: list => list.map(dishRowHtml).join(''),
+    groups: [
+      { key:'cat', label:'Категория', kind:'chips',
+        options: (section, items, sel) => {
+          const used = new Set(items.map(d => d.cat));
+          return CATEGORIES.filter(c => c.id !== 'all' && (used.has(c.id) || sel.includes(c.id)))
+            .map(c => ({ v:c.id, label:c.name }));
+        },
+        values: d => [d.cat] },
+      /* «В меню» и «Стоп-лист» взаимоисключающие, поэтому это отдельная группа:
+         в одной группе с «На главной» выбор стал бы давать лишние блюда */
+      { key:'state', label:'В меню', kind:'chips',
+        options: () => [
+          { v:'menu', label:'В меню' },
+          { v:'stop', label:'Стоп-лист' }
+        ],
+        values: d => [dishAvailable(d) ? 'menu' : 'stop'] },
+      { key:'popular', label:'На главной', kind:'chips',
+        options: () => [
+          { v:'yes', label:'На главной' },
+          { v:'no',  label:'Не на главной' }
+        ],
+        values: d => [d.popular ? 'yes' : 'no'] }
+    ]
+  },
+  promos: {
+    noun: 'промокод',
+    plural: ['промокод', 'промокода', 'промокодов'],
+    query: 'Код промокода',
+    emptyText: 'Промокодов пока нет',
+    items: () => PROMOS,
+    searchText: p => p.code,
+    sorts: [
+      { v:'code',     label:'По коду' },
+      { v:'uses-desc',label:'По числу использований' },
+      { v:'min-desc', label:'По минимальной сумме' }
+    ],
+    sorters: {
+      'code':      (a,b) => a.code.localeCompare(b.code, 'ru'),
+      'uses-desc': (a,b) => promoUses(b.code) - promoUses(a.code),
+      'min-desc':  (a,b) => (Number(b.min)||0) - (Number(a.min)||0)
+    },
+    listHtml: list => promosListHtml(list),
+    groups: [
+      { key:'state', label:'Состояние', kind:'chips',
+        options: () => [
+          { v:'on',  label:'Включён' },
+          { v:'off', label:'Выключен' }
+        ],
+        values: p => [p.active ? 'on' : 'off'] },
+      { key:'type', label:'Тип скидки', kind:'chips',
+        options: () => [
+          { v:'percent', label:'Процент' },
+          { v:'fixed',   label:'Фиксированная сумма' },
+          { v:'delivery',label:'Бесплатная доставка' }
+        ],
+        values: p => [p.type] }
+    ]
+  },
+  push: {
+    noun: 'рассылка',
+    plural: ['рассылка', 'рассылки', 'рассылок'],
+    query: '',
+    emptyText: 'Рассылок пока нет',
+    items: () => admin.pushLog,
+    searchText: () => '',
+    sorts: [],
+    listHtml: list => pushLogListHtml(list),
+    groups: [
+      { key:'audience', label:'Аудитория', kind:'chips',
+        options: (section, items) => {
+          const used = new Set(items.map(e => e.audienceId).filter(Boolean));
+          return [...used].map(id => ({ v:id, label:pushAudienceLabel(id) }));
+        },
+        values: e => e.audienceId ? [e.audienceId] : [] }
+    ]
+  }
+};
+
+/* выбранные значения группы */
+function filterSelected(section, group){
+  const f = admin.f[section];
+  if (group.kind === 'sum'){
+    return (f[group.minKey] !== '' && f[group.minKey] != null) || (f[group.maxKey] !== '' && f[group.maxKey] != null) ? 'sum' : '';
+  }
+  if (group.kind === 'select') return f[group.key] || '';
+  return f[group.key] || [];
+}
+
+function groupMatches(group, item, f){
+  if (group.kind === 'sum'){
+    const total = group.total(item);
+    const min = f[group.minKey], max = f[group.maxKey];
+    if (min !== '' && min != null && total < Number(min)) return false;
+    if (max !== '' && max != null && total > Number(max)) return false;
+    return true;
+  }
+  const sel = filterSelectedOf(group, f);
+  if (!sel || !sel.length) return true;
+  const vals = group.values(item) || [];
+  return sel.some(v => vals.includes(v));
+}
+const filterSelectedOf = (group, f) => group.kind === 'select' ? (f[group.key] ? [f[group.key]] : []) : (f[group.key] || []);
+
+/* предметы раздела, прошедшие фильтры.
+   skip — группу, которую не учитываем (для честных счётчиков),
+   tabMode — 'all' для подсчёта по всем вкладкам, иначе текущая. */
+function filterItems(section, skip, tabMode){
+  const def = FILTER_DEFS[section];
+  const f = admin.f[section];
+  const q = (f.query || '').trim().toLowerCase();
+  return def.items().filter(item => {
+    if (q && !def.searchText(item).toLowerCase().includes(q)) return false;
+    if (def.tabFilter && tabMode !== 'all' && def.tabFilter(item) !== admin.tab) return false;
+    for (const g of def.groups){
+      if (g.key === skip) continue;
+      if (!groupMatches(g, item, f)) return false;
+    }
+    return true;
+  });
+}
+
+function sortedFilterItems(section){
+  const def = FILTER_DEFS[section];
+  const sorter = def.sorters && def.sorters[admin.f[section].sort];
+  const list = filterItems(section, null);
+  return sorter ? list.slice().sort(sorter) : list;
+}
+
+/* сколько заказов останется, если выбрать этот вариант:
+   считаем по списку без этой группы — иначе счётчик врал бы */
+function facetCount(section, group, value){
+  return filterItems(section, group.key).filter(item => (group.values(item) || []).includes(value)).length;
+}
+
+function activeFilterGroups(section){
+  return FILTER_DEFS[section].groups.filter(g => {
+    const sel = filterSelected(section, g);
+    return Array.isArray(sel) ? sel.length > 0 : !!sel;
+  });
+}
+
+function activeFilterChips(section){
+  const def = FILTER_DEFS[section];
+  const items = def.items();
+  const out = [];
+  def.groups.forEach(g => {
+    const sel = filterSelected(section, g);
+    if (!sel || (Array.isArray(sel) && !sel.length)) return;
+    if (g.kind === 'sum'){
+      const f = admin.f[section];
+      const from = f[g.minKey] !== '' ? fmt(Number(f[g.minKey])) : '';
+      const to = f[g.maxKey] !== '' ? fmt(Number(f[g.maxKey])) : '';
+      const text = from && to ? (from + ' — ' + to) : (from ? ('от ' + from) : ('до ' + to));
+      out.push({ group:g, value:'sum', label:g.label + ': ' + text + (g.unit ? ' ' + g.unit : '') });
+      return;
+    }
+    const values = g.kind === 'select' ? [sel] : sel;
+    values.forEach(v => {
+      const opt = g.options(section, items, []).find(o => String(o.v) === String(v));
+      out.push({ group:g, value:v, label:g.label + ': ' + (opt ? opt.label : v) });
+    });
+  });
+  return out;
+}
+
+function filterCountText(section){
+  const def = FILTER_DEFS[section];
+  const shown = filterItems(section, null).length;
+  const total = def.items().filter(item => !def.tabFilter || def.tabFilter(item) === admin.tab).length;
+  return 'Показано ' + shown + ' из ' + total;
+}
+
+/* ------------------------------ разметка ------------------------------ */
+
+function filterGroupHtml(section, g){
+  const def = FILTER_DEFS[section];
+  const items = def.items();
+  const sel = filterSelected(section, g);
+  const P = def.plural || ['заказ', 'заказа', 'заказов'];
+  if (g.kind === 'sum'){
+    const f = admin.f[section];
+    return `
+    <div class="a-filter-group">
+      <span class="a-filter-legend">${g.label}${g.unit ? ', ' + g.unit : ''}</span>
+      <div class="a-filter-range">
+        <input class="input-plain" type="number" min="0" inputmode="numeric" id="fMin-${section}-${g.key}"
+          data-act="admin-filter-num" data-section="${section}" data-group="${g.key}" data-key="${g.minKey}"
+          placeholder="от" aria-label="${g.label}: от" value="${esc(f[g.minKey])}">
+        <span class="muted">—</span>
+        <input class="input-plain" type="number" min="0" inputmode="numeric" id="fMax-${section}-${g.key}"
+          data-act="admin-filter-num" data-section="${section}" data-group="${g.key}" data-key="${g.maxKey}"
+          placeholder="до" aria-label="${g.label}: до" value="${esc(f[g.maxKey])}">
+      </div>
+    </div>`;
+  }
+  if (g.kind === 'select'){
+    const opts = g.options(section, items, sel ? [sel] : []);
+    if (!opts.length) return '';
+    return `
+    <div class="a-filter-group">
+      <label class="a-filter-legend" for="fSel-${section}-${g.key}">${g.label}</label>
+      <select class="input-plain" id="fSel-${section}-${g.key}" data-act="admin-filter-set" data-section="${section}" data-group="${g.key}">
+        ${opts.map(o => `<option value="${esc(o.v)}" ${String(sel||'')===String(o.v)?'selected':''}>${esc(o.label)}</option>`).join('')}
+      </select>
+    </div>`;
+  }
+  const opts = g.options(section, items, sel);
+  if (!opts.length) return '';
+  const legend = 'fLegend-' + section + '-' + g.key;
+  return `
+  <div class="a-filter-group">
+    <div class="a-filter-legend" id="${legend}">${g.label}</div>
+    <div class="a-chip-row" role="group" aria-labelledby="${legend}">
+      ${opts.map(o => {
+        const on = sel.includes(o.v);
+        const n = facetCount(section, g, o.v);
+        return `<button type="button" class="a-chip ${on?'is-active':''}" data-act="admin-filter-value" data-section="${section}"
+          data-group="${g.key}" data-value="${esc(o.v)}" data-label="${esc(o.label)}" aria-pressed="${on}"
+          aria-label="${esc(o.label)}, ${n} ${plural(n, P[0], P[1], P[2])}">${esc(o.label)} <span class="n">${n}</span></button>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function filterPanelHtml(section){
+  const def = FILTER_DEFS[section];
+  const P = def.plural || ['заказ', 'заказа', 'заказов'];
+  const body = def.groups.map(g => filterGroupHtml(section, g)).filter(Boolean).join('');
+  return `
+  <div class="a-filter-panel" id="fPanel-${section}" ${admin.fOpen[section]?'':'hidden'}>
+    ${body || '<p class="a-form-note">Для этого раздела фильтров нет.</p>'}
+    <p class="a-form-note">Счётчик у варианта показывает, сколько ${P[2]} останется, если его выбрать. Пустой счётчик — таких записей сейчас нет.${def.tabFilter ? ' Счётчики и «Показано» считают по текущей вкладке.' : ''}</p>
+  </div>`;
+}
+
+function filterToolbarHtml(section, tools){
+  const def = FILTER_DEFS[section];
+  const f = admin.f[section];
+  const n = activeFilterGroups(section).length;
+  const search = def.query ? `
+    <input class="input-plain a-toolbar-search" id="fSearch-${section}" type="search" data-act="admin-filter-search" data-section="${section}"
+      placeholder="${esc(def.query)}" aria-label="${esc(def.query)}" value="${esc(f.query)}">` : '';
+  const sort = def.sorts && def.sorts.length ? `
+    <select class="input-plain a-toolbar-sort" id="fSort-${section}" data-act="admin-filter-sort" data-section="${section}" aria-label="Сортировка списка">
+      ${def.sorts.map(s => `<option value="${s.v}" ${f.sort===s.v?'selected':''}>${s.label}</option>`).join('')}
+    </select>` : '';
+  return `
+  <div class="a-toolbar">
+    ${search}
+    <button type="button" class="a-btn a-filter-toggle ${n?'is-on':''}" id="fToggle-${section}" data-act="admin-filter-toggle" data-section="${section}"
+      aria-expanded="${admin.fOpen[section]?'true':'false'}" aria-controls="fPanel-${section}">Фильтры${n?' · '+n:''}</button>
+    ${sort}
+    <span class="a-toolbar-count" id="fCount-${section}">${filterCountText(section)}</span>
+    ${tools ? `<div class="a-toolbar-tools">${tools}</div>` : ''}
+  </div>
+  <div class="a-filter-active" id="fActive-${section}"></div>
+  ${filterPanelHtml(section)}`;
+}
+
+function filterEmptyHtml(section){
+  const chips = activeFilterChips(section);
+  const q = (admin.f[section].query || '').trim();
+  if (!chips.length && !q) return `<div class="a-empty">${esc(FILTER_DEFS[section].emptyText || 'Здесь пока пусто')}</div>`;
+  return `
+  <div class="a-empty">
+    <div>${q ? 'Ничего не нашлось по запросу «' + esc(q) + '»' : 'Под фильтры ничего не попало'}</div>
+    ${chips.length ? `<div class="a-filter-active" style="justify-content:center;margin-top:var(--sp-10)">
+      ${chips.map(c => `<button type="button" class="a-chip-active" data-act="admin-filter-remove" data-section="${section}"
+        data-group="${c.group.key}" data-value="${esc(c.value)}" aria-label="Снять фильтр: ${esc(c.label)}">${esc(c.label)} <span aria-hidden="true">×</span></button>`).join('')}
+    </div>` : ''}
+    <button class="a-btn" style="margin-top:var(--sp-12)" data-act="admin-filter-reset" data-section="${section}">Сбросить фильтры</button>
+  </div>`;
+}
+
+/* ------------------------- перерисовка без потери фокуса ------------------------- */
+
+/* список раздела — единственное, что перерисовывается при вводе в поиск
+   и при переключении варианта: поле поиска и чипы остаются на месте */
+function filterListHtml(section){
+  const def = FILTER_DEFS[section];
+  const list = sortedFilterItems(section);
+  return list.length ? def.listHtml(list) : filterEmptyHtml(section);
+}
+
+function renderFilterList(section){
+  const box = document.getElementById('fList-' + section);
+  if (!box) return;
+  box.innerHTML = filterListHtml(section);
+}
+
+/* варианты в панели обновляем на месте — кнопка не пересоздаётся,
+   поэтому фокус и клавиатура не слетают */
+function syncFilterChips(section){
+  const panel = document.getElementById('fPanel-' + section);
+  if (!panel) return;
+  const def = FILTER_DEFS[section];
+  const P = def.plural || ['заказ', 'заказа', 'заказов'];
+  panel.querySelectorAll('.a-chip[data-group]').forEach(btn => {
+    const g = def.groups.find(x => x.key === btn.dataset.group);
+    if (!g) return;
+    const sel = filterSelected(section, g) || [];
+    const on = sel.includes(btn.dataset.value);
+    btn.classList.toggle('is-active', on);
+    btn.setAttribute('aria-pressed', String(on));
+    const n = facetCount(section, g, btn.dataset.value);
+    const num = btn.querySelector('.n');
+    if (num) num.textContent = n;
+    btn.setAttribute('aria-label', btn.dataset.label + ', ' + n + ' ' + plural(n, P[0], P[1], P[2]));
+  });
+}
+
+function updateFilterMeta(section){
+  const count = document.getElementById('fCount-' + section);
+  if (count) count.textContent = filterCountText(section);
+  const toggle = document.getElementById('fToggle-' + section);
+  if (toggle){
+    const n = activeFilterGroups(section).length;
+    toggle.textContent = 'Фильтры' + (n ? ' · ' + n : '');
+    toggle.classList.toggle('is-on', n > 0);
+  }
+  const row = document.getElementById('fActive-' + section);
+  if (row){
+    const chips = activeFilterChips(section);
+    const q = (admin.f[section].query || '').trim();
+    row.innerHTML = chips.map(c => `
+      <button type="button" class="a-chip-active" data-act="admin-filter-remove" data-section="${section}"
+        data-group="${c.group.key}" data-value="${esc(c.value)}" aria-label="Снять фильтр: ${esc(c.label)}">${esc(c.label)} <span aria-hidden="true">×</span></button>`).join('')
+      + ((chips.length || q) ? `<button class="a-btn" data-act="admin-filter-reset" data-section="${section}">Сбросить фильтры</button>` : '');
+  }
+  if (section === 'orders') syncOrderTabs();
+}
+
+function resetSectionFilters(section){
+  const def = FILTER_DEFS[section];
+  const f = admin.f[section];
+  f.query = '';
+  def.groups.forEach(g => {
+    if (g.kind === 'sum'){ f[g.minKey] = ''; f[g.maxKey] = ''; }
+    else if (g.kind === 'select') f[g.key] = '';
+    else f[g.key] = [];
+  });
+  const search = document.getElementById('fSearch-' + section);
+  if (search) search.value = '';
+}
+
+/* после снятия фильтра крестиком фокус переносим на кнопку «Фильтры»:
+   нажатая кнопка исчезает, иначе фокус провалился бы в никуда */
+function focusFilterToggle(section){
+  const toggle = document.getElementById('fToggle-' + section);
+  if (toggle) toggle.focus({ preventScroll:true });
+}
+
 /* -------------------------------- заказы -------------------------------- */
 
-function adminOrders(){
-  const groups = { new:'Новые', work:'В работе', done:'Завершённые' };
-  const bucket = o => {
-    if (o.status === 'new') return 'new';
-    if (o.status === 'done' || DEAD_STATUSES.includes(o.status)) return 'done';
-    return 'work';
-  };
-  const list = state.orders.filter(o => bucket(o) === admin.tab);
-  const all = state.orders;
-
-  const actions = o => {
-    const next = (o.deliveryType === 'table' ? {
-      new:     { label:'Принять в работу', to:'cooking' },
-      cooking: { label:'Собрать заказ',    to:'ready' },
-      ready:   { label:'Подан к столу',    to:'done' }
-    } : {
-      new:     { label:'Принять в работу', to:'cooking' },
-      cooking: { label:'Передать курьеру', to:'courier' },
-      courier: { label:'Курьер выехал',   to:'way' },
-      way:     { label:'Доставлен',       to:'done' }
-    })[o.status];
-    const dead = DEAD_STATUSES.includes(o.status);
-    return `
-      <div class="a-row">
-        ${next && !dead ? `<button class="a-btn primary" data-act="admin-order-status" data-id="${o.id}" data-to="${next.to}">${next.label}</button>` : ''}
-        <button class="a-btn" data-act="admin-toast" data-msg="Чек отправлен на кухню (iikoKitchen)">${icon('printer')} На кухню</button>
-        ${dead ? '' : (admin.rejectFor === o.id
-          ? `<div class="a-reject">
-              <div class="a-reject-title">Причина отказа — гость увидит её в приложении</div>
-              ${REJECT_REASONS.map(r => `<button class="a-btn danger" data-act="admin-reject" data-id="${o.id}" data-reason="${r}">${r}</button>`).join('')}
-              <button class="a-btn" data-act="admin-reject-cancel">Отмена</button>
-            </div>`
-          : `<button class="a-btn danger" data-act="admin-reject-open" data-id="${o.id}">Отклонить</button>`)}
-      </div>`;
-  };
-
+function orderActionsHtml(o){
+  const next = (o.deliveryType === 'table' ? {
+    new:     { label:'Принять в работу', to:'cooking' },
+    cooking: { label:'Собрать заказ',    to:'ready' },
+    ready:   { label:'Подан к столу',    to:'done' }
+  } : {
+    new:     { label:'Принять в работу', to:'cooking' },
+    cooking: { label:'Передать курьеру', to:'courier' },
+    courier: { label:'Курьер выехал',   to:'way' },
+    way:     { label:'Доставлен',       to:'done' }
+  })[o.status];
+  const dead = DEAD_STATUSES.includes(o.status);
   return `
-  <div class="a-tabs">
-    <button class="${admin.tab==='new'?'is-active':''}" data-act="admin-tab" data-tab="new" aria-pressed="${admin.tab==='new'}">Новые · ${all.filter(o=>bucket(o)==='new').length}</button>
-    <button class="${admin.tab==='work'?'is-active':''}" data-act="admin-tab" data-tab="work" aria-pressed="${admin.tab==='work'}">В работе · ${all.filter(o=>bucket(o)==='work').length}</button>
-    <button class="${admin.tab==='done'?'is-active':''}" data-act="admin-tab" data-tab="done" aria-pressed="${admin.tab==='done'}">Завершённые · ${all.filter(o=>bucket(o)==='done').length}</button>
-    <button class="a-btn" style="margin-left:auto" data-act="admin-new-order">+ Создать тестовый заказ</button>
-  </div>
+    <div class="a-row">
+      ${next && !dead ? `<button class="a-btn primary" data-act="admin-order-status" data-id="${o.id}" data-to="${next.to}">${next.label}</button>` : ''}
+      <button class="a-btn" data-act="admin-toast" data-msg="Чек отправлен на кухню (iikoKitchen)">${icon('printer')} На кухню</button>
+      ${dead ? '' : (admin.rejectFor === o.id
+        ? `<div class="a-reject">
+            <div class="a-reject-title">Причина отказа — гость увидит её в приложении</div>
+            ${REJECT_REASONS.map(r => `<button class="a-btn danger" data-act="admin-reject" data-id="${o.id}" data-reason="${r}">${r}</button>`).join('')}
+            <button class="a-btn" data-act="admin-reject-cancel">Отмена</button>
+          </div>`
+        : `<button class="a-btn danger" data-act="admin-reject-open" data-id="${o.id}">Отклонить</button>`)}
+    </div>`;
+}
 
-  ${list.length ? `<div class="a-orders">${list.map(o => `
+function orderCardHtml(o){
+  return `
     <article class="a-order ${o.status==='new'?'is-new':''}">
       <div class="a-order-head">
         <div>
@@ -408,15 +976,32 @@ function adminOrders(){
         <div class="row">${icon('user')} ${o.customer || 'Сергей'} · ${o.phone || '+7 900 000-00-01'}</div>
         <div class="row">${icon('pin')} ${o.address}</div>
         <div class="row">${icon('clock')} ${o.slot ? slotFull(o.slot) : (o.deliveryType === 'table' ? `К столу · ${RULES.prepTable}` : (o.deliveryType === 'pickup' ? 'Самовывоз · как можно скорее' : 'Доставка · как можно скорее'))}</div>
-        <div class="row">${icon('wallet')} ${o.payment==='sbp'?'СБП':(o.payment==='table'?'Оплата у стола':(o.payment==='cash'?'Наличные':'Карта онлайн'))}${o.promo?' · '+o.promo:''}</div>
+        <div class="row">${icon('wallet')} ${ORDER_PAYMENT_LABELS[o.payment] || 'Карта онлайн'}${o.promo?' · '+o.promo:''}</div>
         ${o.bonus ? `<div class="row">${icon('gift')} Списано ${o.bonus} ${plural(o.bonus,'балл','балла','баллов')}${o.bonusRefunded?' · возвращены':''}</div>` : ''}
         ${o.bonusEarn ? `<div class="row">${icon('gift')} Кэшбэк +${o.bonusEarn} · ${o.bonusCredited?'начислен':'после выполнения заказа'}</div>` : ''}
         ${o.comment ? `<div class="row">${icon('doc')} ${o.comment}</div>` : ''}
         ${o.rejectReason ? `<div class="row" style="color:#F2856B">${icon('info')} ${o.rejectReason}</div>` : ''}
       </div>
-      ${actions(o)}
-    </article>`).join('')}</div>`
-  : `<div class="a-panel" style="text-align:center;color:var(--muted)">В этой вкладке пусто</div>`}
+      ${orderActionsHtml(o)}
+    </article>`;
+}
+
+function ordersListHtml(list){
+  return `<div class="a-orders">${list.map(orderCardHtml).join('')}</div>`;
+}
+
+function adminOrders(){
+  return `
+  <div class="a-tabs">
+    <button id="tab-new" class="${admin.tab==='new'?'is-active':''}" data-act="admin-tab" data-tab="new" aria-pressed="${admin.tab==='new'}">Новые</button>
+    <button id="tab-work" class="${admin.tab==='work'?'is-active':''}" data-act="admin-tab" data-tab="work" aria-pressed="${admin.tab==='work'}">В работе</button>
+    <button id="tab-done" class="${admin.tab==='done'?'is-active':''}" data-act="admin-tab" data-tab="done" aria-pressed="${admin.tab==='done'}">Завершённые</button>
+    <button class="a-btn" style="margin-left:auto" data-act="admin-new-order">+ Создать тестовый заказ</button>
+  </div>
+
+  ${filterToolbarHtml('orders', `<button class="a-btn" data-act="admin-orders-csv">${icon('doc')} Скачать CSV</button>`)}
+
+  <div id="fList-orders">${filterListHtml('orders')}</div>
 
   <div class="a-panel" style="margin-top:var(--sp-16)">
     <h2>Передача в iikoDelivery</h2>
@@ -428,29 +1013,45 @@ function adminOrders(){
   </div>`;
 }
 
+/* Счётчик вкладки считаем по всем фильтрам, кроме группы «Статус»:
+   иначе вкладка «В работе» показывала бы ноль, когда выбран статус «Новый». */
+const ORDER_TAB_LABELS = { new:'Новые', work:'В работе', done:'Завершённые' };
+
+function syncOrderTabs(){
+  ['new','work','done'].forEach(bucket => {
+    const el = document.getElementById('tab-' + bucket);
+    if (!el) return;
+    const n = filterItems('orders', 'status', 'all').filter(o => orderBucket(o) === bucket).length;
+    el.textContent = ORDER_TAB_LABELS[bucket] + ' · ' + n;
+  });
+}
+
+/* Выгрузка отфильтрованных заказов в CSV: разделитель «;» и BOM,
+   чтобы Excel открыл файл в нормальной кодировке. */
+function ordersCsvText(list){
+  const head = ['Номер','Дата','Статус','Гость','Телефон','Адрес','Сумма','Как получить','Оплата','Промокод','Комментарий'];
+  const rows = list.map(o => [
+    o.no, o.date, statusLabel(o), o.customer || '', o.phone || '', o.address || '',
+    o.total, ORDER_DELIVERY_LABELS[o.deliveryType] || o.deliveryType,
+    ORDER_PAYMENT_LABELS[o.payment] || o.payment, o.promo || '', o.comment || ''
+  ]);
+  const cell = c => '"' + String(c == null ? '' : c).replace(/"/g, '""') + '"';
+  return '\uFEFF' + [head, ...rows].map(r => r.map(cell).join(';')).join('\r\n');
+}
+
+function downloadTextFile(filename, text){
+  const blob = new Blob([text], { type:'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /* --------------------------------- меню --------------------------------- */
 
 /* Список блюд — одна конструкция на все ширины: в строке только главное
    (фото, название, цена, статус, «на главной», «Детали», действия), остальное
    раскрывается кнопкой «Детали» под строкой. Горизонтальной прокрутки нет. */
-function visibleDishes(){
-  const q = (admin.dishQuery || '').trim().toLowerCase();
-  const hit = d => {
-    if (!q) return true;
-    const cat = CATEGORIES.find(c => c.id === d.cat);
-    return d.name.toLowerCase().includes(q)
-      || (d.badge || '').toLowerCase().includes(q)
-      || (cat && cat.name.toLowerCase().includes(q));
-  };
-  const list = DISHES.filter(hit);
-  const sorters = {
-    'name':       (a, b) => a.name.localeCompare(b.name, 'ru'),
-    'cat':        (a, b) => CATEGORIES.findIndex(c => c.id === a.cat) - CATEGORIES.findIndex(c => c.id === b.cat) || a.name.localeCompare(b.name, 'ru'),
-    'price-asc':  (a, b) => dishPrice(a) - dishPrice(b),
-    'price-desc': (a, b) => dishPrice(b) - dishPrice(a)
-  };
-  return list.sort(sorters[admin.dishSort] || sorters.name);
-}
 
 function dishRowHtml(d){
   const open = admin.dishOpen.includes(d.id);
@@ -487,23 +1088,13 @@ function dishRowHtml(d){
   </div>` : ''}`;
 }
 
-/* перерисовываем только список: поле поиска не пересоздаётся,
-   поэтому фокус и клавиатура не слетают посреди набора */
-function renderDishList(){
-  const box = document.getElementById('dishList');
-  if (!box) return;
-  const list = visibleDishes();
-  box.innerHTML = list.length
-    ? list.map(dishRowHtml).join('')
-    : `<div class="a-dish-empty muted">По запросу «${esc(admin.dishQuery.trim())}» ничего не нашлось. Проверьте написание или очистите поиск.</div>`;
-}
-
 function adminMenu(){
   const cats = CATEGORIES.filter(c => c.id !== 'all');
   const list = DISHES;
   const featured = list.filter(d => d.popular);
   const active = list.filter(dishAvailable).length;
-  const stopped = list.length - active;
+  const stopped = list.filter(d => !dishAvailable(d));
+  const stoppedCount = stopped.length;
   const ownPhoto = !!admin.dishDraft.img && !DISH_IMAGES.includes(admin.dishDraft.img);
   return `
   <div class="a-panel" id="dishForm" style="margin-bottom:var(--sp-18)">
@@ -594,29 +1185,17 @@ function adminMenu(){
 
   <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18);margin-top:var(--sp-18)">
     <div class="a-stat"><div class="lbl">Позиций в меню</div><div class="val">${list.length}</div><div class="delta">${cats.length} категорий</div></div>
-    <div class="a-stat"><div class="lbl">Активных</div><div class="val lime">${active}</div><div class="delta">${stopped} в стоп-листе</div></div>
+    <div class="a-stat"><div class="lbl">Активных</div><div class="val lime">${active}</div><div class="delta">${stoppedCount} в стоп-листе</div></div>
     <div class="a-stat"><div class="lbl">Средняя цена</div><div class="val">${fmt(list.reduce((s,d)=>s+dishPrice(d),0)/list.length)}</div><div class="delta">с учётом скидок</div></div>
     <div class="a-stat"><div class="lbl">Синхронизация с iiko</div><div class="val" style="font-size:var(--fs-18);color:#F0B45A">Не настроена</div><div class="delta">Меню ведётся вручную</div></div>
   </div>
 
   <div class="a-panel">
-    <div class="a-dish-head">
-      <h2 style="margin-bottom:0">Блюда и цены</h2>
-      <div class="a-dish-tools">
-        <input class="input-plain" id="dishSearch" type="search" data-act="admin-dish-search"
-          placeholder="Название, метка или категория" aria-label="Поиск блюда в меню" value="${esc(admin.dishQuery)}">
-        <select class="input-plain" id="dishSort" data-act="admin-dish-sort" aria-label="Сортировка списка блюд">
-          <option value="name" ${admin.dishSort === 'name' ? 'selected' : ''}>По имени</option>
-          <option value="cat" ${admin.dishSort === 'cat' ? 'selected' : ''}>По категории</option>
-          <option value="price-asc" ${admin.dishSort === 'price-asc' ? 'selected' : ''}>Сначала недорогие</option>
-          <option value="price-desc" ${admin.dishSort === 'price-desc' ? 'selected' : ''}>Сначала дорогие</option>
-        </select>
-        <button class="a-btn primary" data-act="admin-dish-new">+ Добавить блюдо</button>
-      </div>
-    </div>
-    <p class="a-form-note" style="margin-top:var(--sp-8)">В строке — только главное: фото, название, цена, статус и действия. Категорию, вес, скидку, состав, аллергены и доплаты показывает кнопка «Детали».</p>
-    <div class="a-dishlist" id="dishList">
-      ${visibleDishes().map(dishRowHtml).join('')}
+    <h2 style="margin-bottom:var(--sp-8)">Блюда и цены</h2>
+    <p class="a-form-note">В строке — только главное: фото, название, цена, статус и действия. Категорию, вес, скидку, состав, аллергены и доплаты показывает кнопка «Детали».</p>
+    ${filterToolbarHtml('menu', `<button class="a-btn primary" data-act="admin-dish-new">+ Добавить блюдо</button>`)}
+    <div class="a-dishlist" id="fList-menu">
+      ${filterListHtml('menu')}
     </div>
   </div>
 
@@ -645,12 +1224,53 @@ function adminMenu(){
     </div>
     <div class="a-panel"><h2>Стоп-лист</h2>
       <p class="a-lead">Позиции, которых нет на кухне прямо сейчас. Клиенты их не видят, и оповещение уходит в зал.</p>
-      <div class="sum-row"><span>Калифорния</span><span class="val">нет в наличии</span></div>
+      ${stopped.length ? stopped.map(d=>`<div class="sum-row"><span>${esc(d.name)}</span><span class="val">нет в наличии</span></div>`).join('')
+        : '<div class="sum-row"><span>Сейчас пусто — все блюда в меню</span><span class="val">0</span></div>'}
     </div>
   </div>`;
 }
 
 /* ------------------------------- маркетинг ------------------------------- */
+
+const PROMO_TYPE_LABEL = { percent:'Процент', fixed:'Фиксированная', delivery:'Доставка' };
+const promoValueText = p => p.type === 'percent' ? p.value + '%' : (p.type === 'fixed' ? fmt(p.value) : 'бесплатно');
+
+/* Промокоды: таблица и карточки строятся из одного отфильтрованного списка */
+function promosListHtml(list){
+  return `
+    <table class="a-table a-table-promos">
+      <thead><tr><th scope="col">Код</th><th scope="col">Тип</th><th scope="col">Значение</th><th scope="col">Мин. сумма</th><th scope="col">Использований</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
+      <tbody>
+        ${list.map(p => `
+          <tr>
+            <td><b>${esc(p.code)}</b>${p.active?'':'<div class="muted" style="font-size:var(--fs-11)">выключен</div>'}</td>
+            <td class="muted nw">${PROMO_TYPE_LABEL[p.type] || p.type}</td>
+            <td class="nw">${promoValueText(p)}</td>
+            <td class="muted nw">${p.min?fmt(p.min):'—'}</td>
+            <td class="muted nw">${promoUses(p.code)}</td>
+            <td class="nw"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${esc(p.code)}">${p.active?'Отключить':'Включить'}</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="a-cards">
+      ${list.map(p => `
+        <article class="a-card a-card-col">
+          <div class="a-card-body">
+            <div class="a-card-title"><b>${esc(p.code)}</b>${p.active?'':'<span class="a-pill warn">выключен</span>'}</div>
+            <div class="muted" style="font-size:var(--fs-12)">${PROMO_TYPE_LABEL[p.type] || p.type} · ${promoValueText(p)}${p.min?' · от '+fmt(p.min):''}</div>
+            <div class="muted" style="font-size:var(--fs-12)">Использований: ${promoUses(p.code)}</div>
+            <div class="a-row"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${esc(p.code)}">${p.active?'Отключить':'Включить'}</button></div>
+          </div>
+        </article>`).join('')}
+    </div>`;
+}
+
+/* Журнал рассылок: запись хранит id аудитории, поэтому фильтруем по нему,
+   а не по текстовой подписи */
+function pushLogListHtml(list){
+  return list.map(entry => `
+    <div class="sum-row" style="align-items:flex-start"><div><b>${esc(entry.title)}</b><div class="muted" style="font-size:var(--fs-12)">${esc(entry.audience)} · ${entry.count} ${plural(entry.count,'получатель','получателя','получателей')} · ${esc(entry.timing)}</div></div><span class="a-pill warn">Не отправлено</span></div>`).join('');
+}
 
 const PUSH_AUDIENCES = [
   { id:'all', label:'Вся база' },
@@ -732,31 +1352,8 @@ function adminMarketing(){
   <div class="a-grid a-grid-split" style="margin-bottom:var(--sp-16)">
     <div class="a-panel">
       <h2>Промокоды</h2>
-      <table class="a-table a-table-promos">
-        <thead><tr><th scope="col">Код</th><th scope="col">Тип</th><th scope="col">Значение</th><th scope="col">Мин. сумма</th><th scope="col">Использований</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
-        <tbody>
-          ${PROMOS.map(p => `
-            <tr>
-              <td><b>${p.code}</b>${p.active?'':'<div class="muted" style="font-size:var(--fs-11)">выключен</div>'}</td>
-              <td class="muted nw">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная':'Доставка')}</td>
-              <td class="nw">${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}</td>
-              <td class="muted nw">${p.min?fmt(p.min):'—'}</td>
-              <td class="muted nw">${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</td>
-              <td class="nw"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${p.code}">${p.active?'Отключить':'Включить'}</button></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-      <div class="a-cards">
-        ${PROMOS.map(p => `
-          <article class="a-card a-card-col">
-            <div class="a-card-body">
-              <div class="a-card-title"><b>${p.code}</b>${p.active?'':'<span class="a-pill warn">выключен</span>'}</div>
-              <div class="muted" style="font-size:var(--fs-12)">${p.type==='percent'?'Процент':(p.type==='fixed'?'Фиксированная сумма':'Бесплатная доставка')} · ${p.type==='percent'?p.value+'%':(p.type==='fixed'?fmt(p.value):'бесплатно')}${p.min?' · от '+fmt(p.min):''}</div>
-              <div class="muted" style="font-size:var(--fs-12)">Использований: ${p.code==='WASABI10'?28:(p.code==='SETHI'?9:4)}</div>
-              <div class="a-row"><button class="a-btn ${p.active?'danger':''}" data-act="admin-promo-toggle" data-code="${p.code}">${p.active?'Отключить':'Включить'}</button></div>
-            </div>
-          </article>`).join('')}
-      </div>
+      ${filterToolbarHtml('promos')}
+      <div id="fList-promos">${filterListHtml('promos')}</div>
       <h2 style="margin-top:var(--sp-20)">Новый промокод</h2>
       <p class="a-lead-sm">Скидка на всю корзину: гость вводит код на оплате или нажимает на связанный баннер. Минимум 0 ₽ — без ограничения по сумме.</p>
       <div class="a-grid a-grid-2" style="gap:var(--sp-10)">
@@ -890,8 +1487,10 @@ function adminMarketing(){
         <button class="a-btn primary a-push-send" data-act="admin-push-send" ${pushRecipients().length?'':'disabled'}><span id="pushSendLabel">${admin.pushDraft.when==='later'?'Сохранить демо-расписание':'Смоделировать отправку'}</span></button>
         <p class="a-form-note">В прототипе рассылка только сохраняется в демо-журнал: телефоны ничего не получат. Для настоящей отправки и расписания нужны сервер, согласия гостей и push-провайдер.</p>
       </div>
-      ${admin.pushLog.length ? `<div class="a-subform"><h2>Демо-журнал рассылок</h2>${admin.pushLog.slice(0,3).map(entry => `
-        <div class="sum-row" style="align-items:flex-start"><div><b>${esc(entry.title)}</b><div class="muted" style="font-size:var(--fs-12)">${esc(entry.audience)} · ${entry.count} ${plural(entry.count,'получатель','получателя','получателей')} · ${esc(entry.timing)}</div></div><span class="a-pill warn">Не отправлено</span></div>`).join('')}</div>` : ''}
+      ${admin.pushLog.length ? `<div class="a-subform"><h2>Демо-журнал рассылок</h2>
+        ${filterToolbarHtml('push')}
+        <div id="fList-push">${filterListHtml('push')}</div>
+      </div>` : ''}
     </div>
   </div>`;
 }
@@ -909,8 +1508,8 @@ function bonusBoxHtml(c){
     <div class="a-bonus-box">
       <span class="muted" style="font-size:var(--fs-12)">Сейчас у гостя ${fmt(c.bonus)} · начислить:</span>
       ${[100,500,1000].map(n => `<button class="a-btn amt ${Number(admin.bonusAmount)===n?'is-on':''}" data-act="admin-bonus-quick" data-amount="${n}" aria-pressed="${Number(admin.bonusAmount)===n}">+${fmt(n)}</button>`).join('')}
-      <input class="input-plain js-bonus-amount" type="number" min="1" inputmode="numeric" aria-label="Сколько баллов начислить" data-act="admin-bonus-amount" value="${admin.bonusAmount}">
-      <button class="a-btn primary" data-act="admin-bonus-apply" data-phone="${c.phone}">Начислить</button>
+      <input class="input-plain js-bonus-amount" type="number" min="1" inputmode="numeric" aria-label="Сколько баллов начислить" data-act="admin-bonus-amount" data-fk="bonus-amount" value="${admin.bonusAmount}">
+      <button class="a-btn primary" data-act="admin-bonus-apply" data-phone="${esc(c.phone)}">Начислить</button>
       <button class="a-btn" data-act="admin-bonus-cancel">Отмена</button>
     </div>
     <p class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-8)">Начисление попадёт в историю демо-счёта, срок сгорания — по общему правилу. Гость с этим телефоном увидит новый баланс.</p>`;
@@ -924,35 +1523,27 @@ function focusBonusAmount(){
   if (vis) vis.focus({ preventScroll:true });
 }
 
-function adminClients(){
-  const orderCount = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.orders) || 0), 0);
-  const orderSum = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.sum) || 0), 0);
+/* Список гостей строится один раз, из отфильтрованного массива: и таблица,
+   и карточки показывают одни и те же строки — иначе на десктопе и на телефоне
+   цифры разойдутся */
+function clientsListHtml(list){
   return `
-  <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-18)">
-    <div class="a-stat"><div class="lbl">Гостей в базе</div><div class="val">${ADMIN_CLIENTS.length}</div><div class="delta">демо, CRM и заказы</div></div>
-    <div class="a-stat"><div class="lbl">Повторных гостей</div><div class="val lime">${ADMIN_CLIENTS.filter(c=>c.orders>1).length}</div><div class="delta">больше одного заказа</div></div>
-    <div class="a-stat"><div class="lbl">Средний чек</div><div class="val">${fmt(orderCount ? orderSum/orderCount : 0)}</div><div class="delta">по истории в этой базе</div></div>
-    <div class="a-stat"><div class="lbl">Баллов в обороте</div><div class="val">${fmt(ADMIN_CLIENTS.reduce((s,c)=>s+c.bonus,0))}</div><div class="delta">демо и CRM, не iiko</div></div>
-  </div>
-  <div class="a-panel">
-    <h2>Гости</h2>
-    <p class="a-lead">После оформления заказа с телефоном гость появляется здесь автоматически или обновляет свою историю. Импорт из CRM добавляет переехавшую базу. Исходные шесть записей — демо; QR-заказ к столу без телефона карточку не создаёт.</p>
     <table class="a-table a-table-clients">
       <thead><tr><th scope="col">Имя</th><th scope="col">Телефон</th><th scope="col">Заказов</th><th scope="col">Сумма</th><th scope="col">Бонусы</th><th scope="col">Сегмент</th><th scope="col">Последний</th><th scope="col"><span class="sr-only">Действия</span></th></tr></thead>
       <tbody>
-        ${ADMIN_CLIENTS.map(c => `
+        ${list.map(c => `
           <tr>
-            <td><b>${c.name}</b> <span class="a-pill olive">${esc(clientOrigin(c))}</span></td>
-            <td class="muted nw">${c.phone}</td>
+            <td><b>${esc(c.name)}</b> <span class="a-pill olive">${esc(clientOrigin(c))}</span></td>
+            <td class="muted nw">${esc(c.phone)}</td>
             <td class="nw">${c.orders}</td>
             <td class="nw">${fmt(c.sum)}</td>
             <td class="nw">${fmt(c.bonus)}</td>
-            <td class="nw"><span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${c.segment}</span></td>
-            <td class="muted nw">${c.last}</td>
+            <td class="nw"><span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${esc(c.segment)}</span></td>
+            <td class="muted nw">${esc(clientLastText(c))}</td>
             <td class="nw">
               <div class="a-row">
-                <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}" aria-expanded="${bonusOpenFor(c)}">Начислить</button>
-                <button class="a-btn danger" data-act="admin-client-del" data-phone="${c.phone}" aria-label="Удалить гостя ${c.name}">${icon('trash')}</button>
+                <button class="a-btn" data-act="admin-bonus-open" data-phone="${esc(c.phone)}" aria-expanded="${bonusOpenFor(c)}">Начислить</button>
+                <button class="a-btn danger" data-act="admin-client-del" data-phone="${esc(c.phone)}" aria-label="Удалить гостя ${esc(c.name)}">${icon('trash')}</button>
               </div>
             </td>
           </tr>
@@ -961,24 +1552,42 @@ function adminClients(){
     </table>
 
     <div class="a-cards">
-      ${ADMIN_CLIENTS.map(c => `
+      ${list.map(c => `
         <article class="a-card">
           <div class="a-card-body">
-            <div class="a-card-title"><b>${c.name}</b><span class="a-pill olive">${esc(clientOrigin(c))}</span></div>
-            <div class="muted" style="font-size:var(--fs-12)">${c.phone}</div>
+            <div class="a-card-title"><b>${esc(c.name)}</b><span class="a-pill olive">${esc(clientOrigin(c))}</span></div>
+            <div class="muted" style="font-size:var(--fs-12)">${esc(c.phone)}</div>
             <div class="a-card-row">
               <span>${c.orders} ${plural(c.orders,'заказ','заказа','заказов')} · ${fmt(c.sum)}</span>
-              <span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${c.segment}</span>
+              <span class="a-pill ${c.segment==='VIP'?'lime':(c.segment==='Спящий'?'warn':'')}">${esc(c.segment)}</span>
             </div>
-            <div class="muted" style="font-size:var(--fs-12)">Бонусы ${fmt(c.bonus)} · был ${c.last}</div>
+            <div class="muted" style="font-size:var(--fs-12)">Бонусы ${fmt(c.bonus)} · был ${esc(clientLastText(c))}</div>
             <div class="a-row">
-              <button class="a-btn" data-act="admin-bonus-open" data-phone="${c.phone}" aria-expanded="${bonusOpenFor(c)}">Начислить баллы</button>
-              <button class="a-btn danger" data-act="admin-client-del" data-phone="${c.phone}" aria-label="Удалить гостя ${c.name}">${icon('trash')}</button>
+              <button class="a-btn" data-act="admin-bonus-open" data-phone="${esc(c.phone)}" aria-expanded="${bonusOpenFor(c)}">Начислить баллы</button>
+              <button class="a-btn danger" data-act="admin-client-del" data-phone="${esc(c.phone)}" aria-label="Удалить гостя ${esc(c.name)}">${icon('trash')}</button>
             </div>
             ${bonusOpenFor(c) ? bonusBoxHtml(c) : ''}
           </div>
         </article>`).join('')}
-    </div>
+    </div>`;
+}
+
+function adminClients(){
+  const orderCount = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.orders) || 0), 0);
+  const orderSum = ADMIN_CLIENTS.reduce((s,c) => s + (Number(c.sum) || 0), 0);
+  return `
+  <div class="a-grid a-grid-4" style="margin-bottom:var(--sp-10)">
+    <div class="a-stat"><div class="lbl">Гостей в базе</div><div class="val">${ADMIN_CLIENTS.length}</div><div class="delta">демо, CRM и заказы</div></div>
+    <div class="a-stat"><div class="lbl">Повторных гостей</div><div class="val lime">${ADMIN_CLIENTS.filter(c=>c.orders>1).length}</div><div class="delta">больше одного заказа</div></div>
+    <div class="a-stat"><div class="lbl">Средний чек</div><div class="val">${fmt(orderCount ? orderSum/orderCount : 0)}</div><div class="delta">по истории в этой базе</div></div>
+    <div class="a-stat"><div class="lbl">Баллов в обороте</div><div class="val">${fmt(ADMIN_CLIENTS.reduce((s,c)=>s+c.bonus,0))}</div><div class="delta">демо и CRM, не iiko</div></div>
+  </div>
+  <p class="muted" style="font-size:var(--fs-12);margin:0 0 var(--sp-12)">Сводка сверху — по всей базе. Фильтры ниже сужают только список гостей.</p>
+  <div class="a-panel">
+    <h2>Гости</h2>
+    <p class="a-lead">После оформления заказа с телефоном гость появляется здесь автоматически или обновляет свою историю. Импорт из CRM добавляет переехавшую базу. Исходные шесть записей — демо; QR-заказ к столу без телефона карточку не создаёт.</p>
+    ${filterToolbarHtml('clients')}
+    <div id="fList-clients">${filterListHtml('clients')}</div>
   </div>
 
   <div class="a-panel" style="margin-top:var(--sp-16)">
@@ -1339,6 +1948,66 @@ document.addEventListener('click', ev => {
 
   if (act === 'admin-section'){ admin.section = el.dataset.section; renderAdmin(); }
   if (act === 'admin-tab'){ admin.tab = el.dataset.tab; renderAdmin(); }
+  if (act === 'admin-filter-toggle'){
+    const section = el.dataset.section;
+    admin.fOpen[section] = !admin.fOpen[section];
+    const panel = document.getElementById('fPanel-' + section);
+    if (panel) panel.hidden = !admin.fOpen[section];
+    el.setAttribute('aria-expanded', String(admin.fOpen[section]));
+    return;
+  }
+  if (act === 'admin-filter-value'){
+    const section = el.dataset.section;
+    const group = el.dataset.group;
+    const value = el.dataset.value;
+    const list = admin.f[section][group] || [];
+    const i = list.indexOf(value);
+    if (i >= 0) list.splice(i, 1); else list.push(value);
+    admin.f[section][group] = list;
+    renderFilterList(section);
+    syncFilterChips(section);
+    updateFilterMeta(section);
+    return;
+  }
+  if (act === 'admin-filter-remove'){
+    const section = el.dataset.section;
+    const group = el.dataset.group;
+    const value = el.dataset.value;
+    const g = FILTER_DEFS[section].groups.find(x => x.key === group);
+    if (g && g.kind === 'sum'){
+      admin.f[section][g.minKey] = '';
+      admin.f[section][g.maxKey] = '';
+    } else if (g && g.kind === 'select'){
+      admin.f[section][group] = '';
+    } else {
+      const list = admin.f[section][group] || [];
+      const i = list.indexOf(value);
+      if (i >= 0) list.splice(i, 1);
+    }
+    renderFilterList(section);
+    syncFilterChips(section);
+    updateFilterMeta(section);
+    focusFilterToggle(section);
+    return;
+  }
+  if (act === 'admin-filter-reset'){
+    const section = el.dataset.section;
+    resetSectionFilters(section);
+    renderFilterList(section);
+    syncFilterChips(section);
+    updateFilterMeta(section);
+    focusFilterToggle(section);
+    return;
+  }
+  if (act === 'admin-orders-csv'){
+    const list = sortedFilterItems('orders');
+    if (!list.length){ toast('Нет заказов для выгрузки'); return; }
+    const now = new Date();
+    const stamp = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    downloadTextFile('wasabi-zakazy-' + stamp + '.csv', ordersCsvText(list));
+    toast('Выгружено заказов: ' + list.length + ' — файл откроется в Excel');
+    return;
+  }
   if (act === 'admin-toast'){ toast(el.dataset.msg); }
   if (act === 'admin-qr-copy'){ copyText(el.dataset.url); }
   if (act === 'admin-qr-png'){
@@ -1620,7 +2289,8 @@ document.addEventListener('click', ev => {
       timing = 'на ' + at.toLocaleString('ru-RU', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
     }
     admin.pushLog.unshift({
-      title:dr.title.trim(), text:dr.text.trim(), audience:pushAudienceLabel(dr.audience),
+      title:dr.title.trim(), text:dr.text.trim(),
+      audience:pushAudienceLabel(dr.audience), audienceId:dr.audience,
       count:recipients.length, promo:dr.promo, timing
     });
     admin.pushDraft = { ...dr, title:'', text:'' };
@@ -1739,13 +2409,18 @@ document.addEventListener('click', ev => {
         exist.orders = Math.max(exist.orders, r.orders);
         exist.sum = Math.max(exist.sum, r.sum);
         exist.bonus = Math.max(exist.bonus, r.bonus);
+        if (r.lastDate){
+          if (!exist.lastDate || isoToTime(r.lastDate) > isoToTime(exist.lastDate)) exist.lastDate = r.lastDate;
+          if (!exist.firstDate || (r.firstDate && isoToTime(r.firstDate) < isoToTime(exist.firstDate))) exist.firstDate = r.firstDate;
+        }
         addClientSource(exist, 'CRM');
         updated++;
         return;
       }
       ADMIN_CLIENTS.push({
         name:r.name, phone:r.phone, orders:r.orders, sum:r.sum, bonus:r.bonus,
-        segment:r.segment, last:'импорт из CRM', sources:['CRM']
+        segment:r.segment, last:'импорт из CRM', lastDate:r.lastDate || '', firstDate:r.firstDate || '',
+        sources:['CRM']
       });
       added++;
     });
@@ -1756,7 +2431,7 @@ document.addEventListener('click', ev => {
   if (act === 'admin-new-order'){
     const d = dishById('d-sing');
     const order = {
-      id:'o'+Date.now(), no: nextOrderNo(), date: nowRu(),
+      id:'o'+Date.now(), no: nextOrderNo(), ts: Date.now(), date: nowRu(), source:'test',
       items:[{ dishId:d.id, name:d.name, qty:1, price:dishPrice(d), mods:[] }],
       sub:dishPrice(d), delivery:RULES.deliveryPrice, discount:0, bonus:0, total:dishPrice(d) + RULES.deliveryPrice,
       status:'new', address:'Ташкентская 198', comment:'Домофон 42', payment:'card', promo:null,
@@ -1844,7 +2519,20 @@ document.addEventListener('input', ev => {
   if (el.dataset.act === 'admin-location-draft'){ admin.locationDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-staff-draft'){ admin.staffDraft[el.dataset.field] = el.value; }
   if (el.dataset.act === 'admin-bonus-amount'){ admin.bonusAmount = el.value; }
-  if (el.dataset.act === 'admin-dish-search'){ admin.dishQuery = el.value; renderDishList(); }
+  if (el.dataset.act === 'admin-filter-search'){
+    const section = el.dataset.section;
+    admin.f[section].query = el.value;
+    renderFilterList(section);
+    syncFilterChips(section);
+    updateFilterMeta(section);
+  }
+  if (el.dataset.act === 'admin-filter-num'){
+    const section = el.dataset.section;
+    admin.f[section][el.dataset.key] = el.value;
+    renderFilterList(section);
+    syncFilterChips(section);
+    updateFilterMeta(section);
+  }
   if (el.dataset.act === 'admin-import-text'){
     admin.clientImport.text = el.value;
     admin.clientImport.rows = null;
@@ -1887,9 +2575,18 @@ document.addEventListener('input', ev => {
 document.addEventListener('change', ev => {
   const el = ev.target;
   if (!el.dataset) return;
-  if (el.dataset.act === 'admin-dish-sort'){
-    admin.dishSort = el.value;
-    renderDishList();
+  if (el.dataset.act === 'admin-filter-sort'){
+    const section = el.dataset.section;
+    admin.f[section].sort = el.value;
+    renderFilterList(section);
+    return;
+  }
+  if (el.dataset.act === 'admin-filter-set'){
+    const section = el.dataset.section;
+    admin.f[section][el.dataset.group] = el.value;
+    renderFilterList(section);
+    syncFilterChips(section);
+    updateFilterMeta(section);
     return;
   }
   if (el.dataset.act === 'admin-setting' && ['bonusPercent','bonusMaxPay','bonusExpiryMonths'].includes(el.dataset.key)){

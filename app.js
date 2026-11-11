@@ -358,12 +358,15 @@ function totals(){
   return { sub, delivery, discount, bonusUse, bonusMax, bonusAvailable, total: Math.max(0, base + delivery - bonusUse) };
 }
 
-function nowRu(){
-  const d = new Date();
+/* Дата и время заказа текстом. По той же метке времени заказ потом
+   фильтруется по периоду, поэтому храним оба вида: ts — для фильтра, текст — для глаза. */
+function dateRu(ts){
+  const d = new Date(ts == null ? Date.now() : ts);
   const m = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'][d.getMonth()];
   const time = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
   return `${d.getDate()} ${m} в ${time}`;
 }
+const nowRu = () => dateRu(Date.now());
 
 /* Номер заказа — короткий и читаемый вслух («2481» вместо «bb5cc2»).
    Считаем от максимального уже выданного, чтобы номера не повторялись. */
@@ -374,12 +377,16 @@ const nextOrderNo = () => {
 };
 
 function seedOrders(){
+  /* Демо-заказ: сегодня, 40 минут назад — чтобы работали фильтр по периоду
+     и поиск по телефону, а не только заголовок карточки. */
+  const ts = Date.now() - 40*60*1000;
   state.orders = [
-    { id:'o-seed', no:'2401', date:'27 октября в 15:11',
+    { id:'o-seed', no:'2401', ts, date: dateRu(ts),
       items:[{ dishId:'d-phil', name:'Филадельфия', qty:1, price:590, mods:[] }],
       sub:590, delivery:199, discount:0, bonus:0, total:789,
       status:'new', deliveryType:'delivery', locationId:'l1', addressId:'a1', slot:null,
-      address:'Ташкентская 198', comment:'', payment:'card', promo:null }
+      address:'Ташкентская 198', comment:'', payment:'card', promo:null, source:'app',
+      customer:'Сергей', phone:'+7 900 000-00-01' }
   ];
   state.currentOrderId = 'o-seed';
 }
@@ -1689,6 +1696,8 @@ const FEATURE_GROUPS = [
     '«На главной»: какие блюда попадают в ленту любимого (до 6)',
     'Маркетинг: промокоды, настройка кэшбэка и списания баллов, свои баннеры, демо-push',
     'Заказы: приём, статусы, отклонение с причиной',
+    'Фильтры в админке: поиск, сортировка, панель «Фильтры» с честными счётчиками, чипы и сброс — в заказах, клиентах, меню, промокодах и журнале рассылок',
+    'Выгрузка заказов в CSV: ровно те строки, что видны на экране',
     'Клиенты: автоматически из заказов, импорт из CRM, источники, бонусы и удаление',
     'QR-меню: ссылки на столы, PNG для печати, листы A4',
     'Аналитика: выручка, средний чек, доставка против самовывоза, выгрузка CSV и Excel',
@@ -1975,7 +1984,7 @@ const ACTIONS = {
     setTimeout(() => {
       const t = totals();
       const order = {
-        id:'o'+Date.now(), no: nextOrderNo(), date: nowRu(),
+        id:'o'+Date.now(), no: nextOrderNo(), ts: Date.now(), date: nowRu(),
         items: cartLines().map(l => ({ dishId:l.dishId, name:dishById(l.dishId).name, qty:l.qty, price:lineUnit(l), mods:l.mods })),
         sub:t.sub, delivery:t.delivery, discount:t.discount, bonus:t.bonusUse, total:t.total,
         bonusEarn:RULES.bonusEnabled && state.deliveryType !== 'table' ? Math.floor(Math.max(0, t.sub - t.discount) * RULES.bonusAccrual / 100) : 0,
@@ -1989,6 +1998,7 @@ const ACTIONS = {
           ? `Стол ${state.table.no} · ${locById(state.table.locId).name}`
           : state.deliveryType === 'pickup' ? LOCATIONS.find(l=>l.id===state.locationId).address : state.address,
         comment: state.comment, payment: state.payMethod, promo: state.promo,
+        source: state.deliveryType === 'table' ? 'qr' : 'app',
         customer: state.deliveryType === 'table' ? 'Гость стола ' + state.table.no : state.user.name,
         phone: state.deliveryType === 'table' ? '' : state.user.phone
       };

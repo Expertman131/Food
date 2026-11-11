@@ -156,14 +156,21 @@ function formatPhone(digits){
   return '+7 ' + digits.slice(1,4) + ' ' + digits.slice(4,7) + '-' + digits.slice(7,9) + '-' + digits.slice(9,11);
 }
 
-/* Единый демо-счёт гостя: профиль, оплата и база клиентов читают один баланс. */
+/* Единый демо-счёт гостя: профиль, оплата и база клиентов читают один баланс.
+   Даты demo считаются от сегодняшнего дня, чтобы база не устарела со временем. */
+const dayIso = offset => {
+  const d = new Date();
+  d.setDate(d.getDate() - (Number(offset) || 0));
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+
 const ADMIN_CLIENTS = [
-  { name:'Сергей',   phone:'+7 900 000-00-01', orders:12, sum:14890, bonus:742, segment:'Постоянный', last:'сегодня', history:[] },
-  { name:'Анна',     phone:'+7 916 330-12-04', orders:7,  sum:8240,  bonus:412, segment:'Постоянный', last:'вчера', history:[] },
-  { name:'Дмитрий',  phone:'+7 903 118-77-21', orders:3,  sum:3170,  bonus:158, segment:'Новый',       last:'3 дня назад', history:[] },
-  { name:'Мария',    phone:'+7 985 402-19-55', orders:1,  sum:1690,  bonus:84,  segment:'Новый',       last:'неделя назад', history:[] },
-  { name:'Ольга',    phone:'+7 926 640-08-31', orders:19, sum:24310, bonus:1215,segment:'VIP',         last:'2 дня назад', history:[] },
-  { name:'Игорь',    phone:'+7 891 003-92-44', orders:2,  sum:1580,  bonus:79,  segment:'Спящий',      last:'3 недели назад', history:[] }
+  { name:'Сергей',   phone:'+7 900 000-00-01', orders:12, sum:14890, bonus:742, segment:'Постоянный', last:'сегодня',       lastDate:dayIso(0),  firstDate:dayIso(150), history:[] },
+  { name:'Анна',     phone:'+7 916 330-12-04', orders:7,  sum:8240,  bonus:412, segment:'Постоянный', last:'вчера',         lastDate:dayIso(1),  firstDate:dayIso(90),  history:[] },
+  { name:'Дмитрий',  phone:'+7 903 118-77-21', orders:3,  sum:3170,  bonus:158, segment:'Новый',       last:'3 дня назад',  lastDate:dayIso(3),  firstDate:dayIso(60),  history:[] },
+  { name:'Мария',    phone:'+7 985 402-19-55', orders:1,  sum:1690,  bonus:84,  segment:'Новый',       last:'неделя назад', lastDate:dayIso(7),  firstDate:dayIso(14),  history:[] },
+  { name:'Ольга',    phone:'+7 926 640-08-31', orders:19, sum:24310, bonus:1215,segment:'VIP',         last:'2 дня назад',  lastDate:dayIso(2),  firstDate:dayIso(200), history:[] },
+  { name:'Игорь',    phone:'+7 891 003-92-44', orders:2,  sum:1580,  bonus:79,  segment:'Спящий',      last:'3 недели назад',lastDate:dayIso(21),firstDate:dayIso(120), history:[] }
 ];
 
 const RULES = {
