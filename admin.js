@@ -298,16 +298,6 @@ const adminTop = (title, sub) => {
   <div>
     <h1>${title}</h1>
     <div class="sub">${sub}</div>
-  </div>
-  <div class="row gap-10">
-    <a class="a-guide" href="guide.html" target="_blank" rel="noopener">Инструкция</a>
-    <span class="a-pill lime">${icon('volume')} Звук нового заказа</span>
-    <label class="a-staff-switch">
-      <span class="sr-only">Сотрудник, от имени которого открыта панель</span>
-      <select class="input-plain" data-act="admin-staff-switch">
-        ${ADMIN_STAFF.map(s => `<option value="${s.id}" ${state.staffId===s.id?'selected':''}>${esc(s.name)} · ${esc(roleLabel(s.role))}</option>`).join('')}
-      </select>
-    </label>
   </div>`;
 };
 
@@ -410,7 +400,8 @@ function renderAdminSide(){
     </nav>
     <div class="aside-note">
       Демо-панель. Данные из iiko не подключены: меню и стоп-лист ведутся здесь вручную, заказы не попадают в кассу.
-    </div>`;
+    </div>
+    <a class="a-guide aside-guide" href="guide.html" target="_blank" rel="noopener">Инструкция для сотрудников</a>`;
 }
 
 /* =========================================================================
@@ -2115,7 +2106,14 @@ function adminSettings(){
       </div>
       <div class="a-panel">
         <h2>Сотрудники и роли</h2>
-        <p class="a-lead-sm">Выберите роль у человека или добавьте нового. Кто сейчас смотрит панель — переключается в шапке админки (демо, без входа по SMS).</p>
+        <p class="a-lead-sm">Выберите роль у человека или добавьте нового.</p>
+        <div class="field" style="max-width:360px">
+          <label for="staff-current">Кто сейчас смотрит панель</label>
+          <select class="input-plain" id="staff-current" data-act="admin-staff-switch">
+            ${ADMIN_STAFF.map(s => `<option value="${s.id}" ${state.staffId===s.id?'selected':''}>${esc(s.name)} · ${esc(roleLabel(s.role))}</option>`).join('')}
+          </select>
+          <p class="a-form-note">Демо без входа по SMS: выбор показывает, от чьего имени открыта панель. Права по ролям не ограничивают кнопки.</p>
+        </div>
         ${ADMIN_STAFF.map(person => `
           <div class="sum-row a-staff-row">
             <div><div style="font-weight:600">${esc(person.name)}</div><div class="muted" style="font-size:var(--fs-12)">${esc(person.phone)}</div><div class="muted" style="font-size:var(--fs-12);margin-top:var(--sp-4)">${esc(STAFF_ROLES[person.role].description)}</div></div>
